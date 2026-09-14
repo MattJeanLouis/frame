@@ -1,0 +1,173 @@
+/* Reset léger */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+body, h1, h2, h3, p, figure, ul, ol {
+  margin: 0;
+  padding: 0;
+}
+
+ul, ol {
+  list-style: none;
+}
+
+img {
+  display: block;
+  max-width: 100%;
+}
+
+button, input, textarea {
+  font: inherit;
+  color: inherit;
+}
+
+/* Fond et typographie de base */
+html, body {
+  background: var(--c-bg);
+  color: var(--c-text);
+}
+
+body {
+  font-family: var(--ff-text);
+  font-size: var(--fs-md);
+  line-height: var(--lh-normal);
+  font-variant-numeric: tabular-nums;
+  overflow-x: hidden;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* Focus clavier */
+:focus-visible {
+  outline: 2px solid var(--c-focus);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* Utilitaire d'accessibilité */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Structure générale */
+#app {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+#header {
+  height: var(--header-h);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding-inline: var(--gutter);
+  border-bottom: 1px solid var(--c-line);
+  position: sticky;
+  top: 0;
+  z-index: var(--z-drawer);
+  background: var(--c-bg);
+}
+
+#brand {
+  font-family: var(--ff-display);
+  font-weight: var(--fw-black);
+  font-size: var(--fs-lg);
+  letter-spacing: var(--ls-brand);
+  text-transform: uppercase;
+  margin-right: auto;
+}
+
+.hbtn {
+  height: var(--hit-min);
+  min-width: var(--hit-min);
+  background: transparent;
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-full);
+  font-size: var(--fs-sm);
+  padding-inline: var(--sp-3);
+}
+
+.hbtn:hover {
+  background: var(--c-raised);
+}
+
+.hbtn:disabled {
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+#main {
+  flex: 1;
+  display: grid;
+  gap: var(--sp-5);
+  padding: var(--sp-4) var(--gutter) var(--sp-6);
+}
+
+@media (min-width: 900px) {
+  #main {
+    grid-template-columns: minmax(0, var(--canvas-max-desk)) minmax(0, 1fr);
+    align-items: start;
+  }
+
+  #stage {
+    grid-column: 1;
+  }
+
+  #results-host {
+    grid-column: 2;
+  }
+}
+
+#stage {
+  display: grid;
+  gap: var(--sp-3);
+  justify-items: stretch;
+  min-width: 0;
+}
+
+#footer {
+  padding: var(--sp-5) var(--gutter);
+  border-top: 1px solid var(--c-line);
+  color: var(--c-text-dim);
+  font-size: var(--fs-sm);
+}
+
+#footer a {
+  color: var(--c-text-dim);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+#notice {
+  background: var(--c-raised);
+  color: var(--c-text-dim);
+  font-size: var(--fs-sm);
+  padding: var(--sp-2) var(--gutter);
+  border-bottom: 1px solid var(--c-line);
+}
+
+#toast {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: var(--sp-5);
+  z-index: var(--z-toast);
+  background: var(--c-raised);
+  border: 1px solid var(--c-line-strong);
+  border-radius: var(--r-full);
+  padding: var(--sp-2) var(--sp-4);
+  box-shadow: var(--sh-raised);
+  font-size: var(--fs-sm);
+}

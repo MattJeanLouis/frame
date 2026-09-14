@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="description" content="FRAME — compose un tableau de stickers, découvre des films.">
+<title>FRAME</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="preconnect" href="https://image.tmdb.org" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=Instrument+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="styles/tokens.css">
+<link rel="stylesheet" href="styles/base.css">
+<link rel="stylesheet" href="styles/canvas.css">
+<link rel="stylesheet" href="styles/drawer.css">
+<link rel="stylesheet" href="styles/results.css">
+<link rel="stylesheet" href="styles/panels.css">
+<script src="config.local.js" onerror="window.FRAME_CONFIG = window.FRAME_CONFIG || {};"></script>
+</head>
+<body>
+<div id="app">
+  <header id="header">
+    <h1 id="brand">FRAME</h1>
+    <button id="btn-undo" class="hbtn" type="button" title="Annuler" aria-label="Annuler" disabled>↶</button>
+    <button id="btn-redo" class="hbtn" type="button" title="Rétablir" aria-label="Rétablir" disabled>↷</button>
+    <button id="btn-boards" class="hbtn" type="button">Mes tableaux</button>
+    <button id="btn-share" class="hbtn" type="button">Partager</button>
+  </header>
+
+  <div id="notice" role="status" hidden></div>
+
+  <main id="main">
+    <section id="stage" aria-label="Ta toile">
+      <div id="canvas-host"></div>
+      <div id="examples" class="examples" hidden></div>
+      <div id="stage-bar" class="stage-bar">
+        <button id="btn-clear" class="hbtn" type="button">Vider la toile</button>
+        <p id="scope" class="scope" hidden></p>
+      </div>
+      <div id="drawer-host"></div>
+    </section>
+
+    <section id="results-host" aria-label="Films trouvés"></section>
+  </main>
+
+  <footer id="footer">
+    <p>Données de films fournies par
+      <a href="https://www.themoviedb.org/" target="_blank" rel="noopener">TMDB</a>.
+      Ce produit utilise l'API TMDB mais n'est ni approuvé ni certifié par TMDB.</p>
+    <p>Emoji par <a href="https://github.com/jdecked/twemoji" target="_blank" rel="noopener">Twemoji</a>,
+      sous licence CC-BY 4.0.</p>
+  </footer>
+</div>
+
+<div id="sheet-host"></div>
+<div id="panels-host"></div>
+<div id="toast" role="status" hidden></div>
+
+<script type="module" src="src/app.js"></script>
+</body>
+</html>

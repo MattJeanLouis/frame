@@ -1,0 +1,99 @@
+:root {
+  color-scheme: dark;
+
+  /* Couleurs — spec §6.1 */
+  --c-bg: #0B0E14;
+  --c-surface: #141925;
+  --c-raised: #1C2333;
+  --c-text: #F2EEE6;
+  --c-text-dim: #A9B0BF;
+  --c-accent: #F2B544;
+  --c-accent-ink: #1A1206;
+  --c-error: #E4574B;
+  --c-error-soft: rgba(228, 87, 75, 0.14);
+  --c-success: #5FC08A;
+  --c-success-soft: rgba(95, 192, 138, 0.14);
+  --c-line: rgba(242, 238, 230, 0.10);
+  --c-line-strong: rgba(242, 238, 230, 0.20);
+  --c-overlay: rgba(6, 8, 13, 0.72);
+  --c-focus: #F2B544;
+
+  /* Typographie */
+  --ff-display: "Syne", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  --ff-text: "Instrument Sans", -apple-system, "Segoe UI", Roboto, system-ui, sans-serif;
+  --fs-2xs: 0.6875rem;  /* 11px — badges, légendes */
+  --fs-xs: 0.75rem;     /* 12px — étiquettes capitales */
+  --fs-sm: 0.8125rem;   /* 13px — méta, année */
+  --fs-md: 0.9375rem;   /* 15px — texte courant */
+  --fs-lg: 1.125rem;    /* 18px — titres de carte, titres de panneau */
+  --fs-xl: 1.5rem;      /* 24px — titre de fiche film */
+  --fs-2xl: 2rem;       /* 32px — nom FRAME */
+  --lh-tight: 1.15;
+  --lh-normal: 1.45;
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semi: 600;
+  --fw-bold: 700;
+  --fw-black: 800;
+  --ls-caps: 0.14em;
+  --ls-brand: 0.22em;
+
+  /* Espacement — base 4px */
+  --sp-1: 0.25rem;
+  --sp-2: 0.5rem;
+  --sp-3: 0.75rem;
+  --sp-4: 1rem;
+  --sp-5: 1.5rem;
+  --sp-6: 2rem;
+  --sp-7: 3rem;
+  --gutter: 1rem;          /* marge latérale minimale : 16px */
+
+  /* Rayons */
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 16px;
+  --r-full: 999px;
+
+  /* Ombres */
+  --sh-sticker: 0 6px 14px rgba(0, 0, 0, 0.55);
+  --sh-card: 0 2px 10px rgba(0, 0, 0, 0.45);
+  --sh-raised: 0 8px 24px rgba(0, 0, 0, 0.55);
+  --sh-panel: 0 16px 48px rgba(0, 0, 0, 0.68);
+
+  /* Durées et courbes */
+  --d-instant: 80ms;
+  --d-fast: 120ms;
+  --d-base: 200ms;
+  --d-slow: 360ms;
+  --d-stagger: 40ms;       /* décalage entre cartes de résultats */
+  --d-debounce: 400ms;     /* miroir JS : DEBOUNCE_MS dans app.js */
+  --e-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --e-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --e-spring: cubic-bezier(0.34, 1.28, 0.64, 1);
+
+  /* Dimensions de disposition */
+  --bp-desk: 900px;
+  --canvas-max-phone: 520px;
+  --canvas-max-desk: 640px;
+  --drawer-h: 96px;
+  --drawer-tile: 56px;
+  --card-w-phone: 140px;
+  --card-w-desk: 180px;
+  --header-h: 56px;
+  --hit-min: 44px;         /* cible tactile minimale */
+  --z-canvas-tool: 20;
+  --z-drawer: 30;
+  --z-sheet: 60;
+  --z-panel: 70;
+  --z-toast: 90;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --d-instant: 0ms;
+    --d-fast: 0ms;
+    --d-base: 0ms;
+    --d-slow: 0ms;
+    --d-stagger: 0ms;
+  }
+}
