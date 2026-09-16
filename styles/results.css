@@ -8,12 +8,6 @@
   min-width: 0;
 }
 
-/* #results-host est une cellule de la grille de #main : sans min-width: 0 sa
-   taille minimale serait celle des cartes et la page déborderait. */
-#results-host {
-  min-width: 0;
-}
-
 .results__title {
   font-family: var(--ff-display);
   font-size: var(--fs-xs);
@@ -53,6 +47,7 @@
   background: none;
   border: 0;
   text-align: left;
+  transition: opacity var(--d-base) var(--e-out);
 }
 
 .card__poster {
@@ -112,6 +107,9 @@
   font-size: var(--fs-md);
   font-weight: var(--fw-medium);
   line-height: var(--lh-tight);
+  /* Deux lignes réservées : l'année et les emoji des six cartes restent
+     alignés quand un titre passe sur deux lignes. */
+  min-height: calc(2 * var(--lh-tight) * 1em);
   overflow-wrap: anywhere;
   display: -webkit-box;
   -webkit-box-orient: vertical;
@@ -141,14 +139,21 @@
 
 .card__why {
   display: flex;
-  gap: var(--sp-1);
+  column-gap: var(--sp-1);
+  row-gap: 0;
   font-size: var(--fs-md);
   flex-wrap: wrap;
-  /* Sur une toile très chargée, l'explication tient en deux lignes : la carte
-     reste une affiche, la fiche donne la liste complète. */
   line-height: 1.3;
-  max-height: 2.7em;
-  overflow: hidden;
+}
+
+/* Sur téléphone et sur une toile très chargée, l'explication tient en deux
+   rangées entières : la carte reste une affiche, la fiche donne la liste
+   complète. À partir de 900 px, §6.2 demande des explications complètes. */
+@media (max-width: 899px) {
+  .card__why {
+    max-height: 2.6em;
+    overflow: hidden;
+  }
 }
 
 .card__emoji.is-dim {
@@ -177,10 +182,6 @@
 /* Les résultats précédents restent visibles pendant le chargement. */
 .results.is-loading .card {
   opacity: 0.45;
-}
-
-.card {
-  transition: opacity var(--d-base) var(--e-out);
 }
 
 .results__state {
@@ -266,10 +267,27 @@
   animation: sheet-up var(--d-base) var(--e-out) backwards;
 }
 
-/* Poignée de glissement : la fiche se ferme d'un geste vers le bas. */
-.sheet__panel::before {
-  content: "";
-  justify-self: center;
+/* Zone de poignée : le glissement de fermeture se prend ici, et seulement ici.
+   Elle seule coupe le geste au navigateur (touch-action: none) ; le corps du
+   panneau garde pan-y et reste défilable au doigt. */
+.sheet__grab {
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
+  height: var(--hit-min);
+  display: grid;
+  justify-items: center;
+  align-content: start;
+  padding-top: var(--sp-2);
+  touch-action: none;
+  cursor: grab;
+}
+
+.sheet__grab:active {
+  cursor: grabbing;
+}
+
+.sheet__handle {
   width: 40px;
   height: 4px;
   border-radius: var(--r-full);
@@ -321,7 +339,8 @@
 
 .sheet__poster.is-typographic {
   display: grid;
-  align-items: end;
+  align-content: end;
+  gap: var(--sp-3);
   padding: var(--sp-3);
   background:
     linear-gradient(165deg,
@@ -343,13 +362,25 @@
   display: none;
 }
 
-.sheet__fallback {
+/* Film sans affiche : l'affiche porte l'année et les stickers qui l'ont
+   trouvé ; le titre reste à .sheet__title, il ne s'écrit pas deux fois. */
+.sheet__poster-year {
   font-family: var(--ff-display);
-  font-size: var(--fs-lg);
-  font-weight: var(--fw-bold);
+  font-size: var(--fs-2xl);
+  font-weight: var(--fw-black);
   line-height: var(--lh-tight);
-  text-wrap: balance;
-  overflow-wrap: anywhere;
+  letter-spacing: var(--ls-caps);
+}
+
+.sheet__poster-emojis {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.sheet__poster-emoji {
+  width: 24px;
+  height: 24px;
 }
 
 .sheet__title {
@@ -367,30 +398,26 @@
   margin-top: calc(var(--sp-3) * -1 + var(--sp-1));
 }
 
+/* Une seule ligne d'explication : la phrase de explain, ses emoji rendus en
+   Twemoji, pleine couleur pour un sticker honoré, estompés pour un ignoré. */
 .sheet__why {
-  display: grid;
-  gap: var(--sp-2);
-  justify-items: start;
+  color: var(--c-text-dim);
+  font-size: var(--fs-md);
+  line-height: 1.6;
   padding: var(--sp-3);
   border: 1px solid var(--c-line);
   border-radius: var(--r-md);
   background: var(--c-raised);
 }
 
-.sheet__sentence {
-  color: var(--c-text-dim);
-  font-size: var(--fs-sm);
+.sheet__emoji {
+  display: inline-block;
+  width: 1.1em;
+  height: 1.1em;
+  vertical-align: -0.2em;
 }
 
-.sheet__emojis {
-  display: flex;
-  gap: var(--sp-2);
-  font-size: var(--fs-xl);
-  line-height: 1;
-  flex-wrap: wrap;
-}
-
-.sheet__emojis .card__emoji.is-dim {
+.sheet__emoji.is-dim {
   opacity: 0.32;
   filter: grayscale(1);
 }
@@ -438,14 +465,33 @@
     place-items: center;
   }
 
+  /* Deux colonnes : l'affiche à gauche, tout le texte à droite. */
   .sheet__panel {
     max-width: 560px;
     border-radius: var(--r-lg);
     animation-name: sheet-in;
+    grid-template-columns: 220px minmax(0, 1fr);
+    align-content: start;
   }
 
-  .sheet__panel::before {
+  .sheet__grab {
     display: none;
+  }
+
+  .sheet__poster {
+    grid-column: 1;
+    grid-row: 1 / span 5;
+    width: 220px;
+    margin-inline: 0;
+    align-self: start;
+  }
+
+  .sheet__title,
+  .sheet__meta,
+  .sheet__why,
+  .sheet__overview,
+  .sheet__link {
+    grid-column: 2;
   }
 }
 

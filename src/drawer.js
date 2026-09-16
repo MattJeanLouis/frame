@@ -73,12 +73,14 @@ export function createDrawer(rootEl, { onPick } = {}) {
 
   /* ── Toile pleine ───────────────────────────────────────────────────────── */
 
-  /** Bascule l'état « plein » : tuiles inertes et message de refus. */
+  /**
+   * Bascule l'état « plein » : tuiles estompées et inertes. Le message, lui,
+   * n'apparaît qu'au moment où l'on essaie quand même de poser un sticker.
+   */
   function setFull(full) {
     isFull = Boolean(full);
     dom.drawer.classList.toggle('is-full', isFull);
-    if (isFull) showFullMessage();
-    else hideFullMessage();
+    if (!isFull) hideFullMessage();
   }
 
   function showFullMessage() {

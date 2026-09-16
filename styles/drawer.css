@@ -7,12 +7,6 @@
   min-width: 0;
 }
 
-/* #drawer-host est une cellule de la grille de #stage : sans min-width: 0 sa
-   taille minimale serait celle de son contenu et la page déborderait. */
-#drawer-host {
-  min-width: 0;
-}
-
 /* ── Onglets ─────────────────────────────────────────────────────────────── */
 
 .drawer__tabs {

@@ -137,6 +137,13 @@ body {
   min-width: 0;
 }
 
+/* Cellules de grille qui hébergent un contenu défilant : sans min-width: 0
+   leur taille minimale serait celle de leur contenu et la page déborderait. */
+#drawer-host,
+#results-host {
+  min-width: 0;
+}
+
 #footer {
   padding: var(--sp-5) var(--gutter);
   border-top: 1px solid var(--c-line);

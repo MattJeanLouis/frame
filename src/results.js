@@ -4,6 +4,7 @@
 // déplacent vers leur nouvelle place au lieu d'être détruites puis recréées.
 
 import { explain } from './engine.js';
+import { twemojiUrl } from './stickers.js';
 import { posterUrl, movieUrl } from './tmdb.js';
 
 /** « évident » ne s'affiche jamais : c'est le cas par défaut. */
@@ -33,11 +34,11 @@ const yearOf = movie => String(movie.release_date || '').slice(0, 4);
  * honorés en pleine couleur et ignorés estompés. Aucun pourcentage.
  */
 function whyParts(entry, placed) {
-  const { honored, ignored, sentence } = explain(entry, placed);
+  const { honored, ignored } = explain(entry, placed);
   const known = new Map();
   for (const sticker of honored) known.set(sticker.id, { sticker, dim: false });
   for (const sticker of ignored) if (!known.has(sticker.id)) known.set(sticker.id, { sticker, dim: true });
-  return { sentence, parts: placed.map(p => known.get(p.id)).filter(Boolean) };
+  return placed.map(p => known.get(p.id)).filter(Boolean);
 }
 
 function fillEmojis(el, parts) {
@@ -50,10 +51,58 @@ function fillEmojis(el, parts) {
   }));
 }
 
-function setTypographic(posterEl, title, className) {
+/** Image Twemoji d'un sticker, pleine couleur ou estompée. */
+function stickerImg(sticker, dim, className) {
+  const img = document.createElement('img');
+  img.className = dim ? className + ' is-dim' : className;
+  img.src = twemojiUrl(sticker.emoji);
+  img.alt = sticker.label.toLowerCase();
+  img.title = dim ? sticker.label + ', pas retenu' : sticker.label;
+  img.draggable = false;
+  return img;
+}
+
+/**
+ * La phrase de explain, ses emoji remplacés par leur image Twemoji : pleine
+ * couleur pour un sticker honoré, estompée pour un ignoré. Les mots restent
+ * du texte, et on ne devine rien — les emoji viennent de honored et ignored.
+ */
+function fillSentence(el, { honored, ignored, sentence }) {
+  const marks = new Map();
+  for (const sticker of honored) marks.set(sticker.emoji, { sticker, dim: false });
+  for (const sticker of ignored) if (!marks.has(sticker.emoji)) marks.set(sticker.emoji, { sticker, dim: true });
+  const emojis = [...marks.keys()].sort((a, b) => b.length - a.length);
+
+  const nodes = [];
+  let rest = sentence;
+  while (rest) {
+    let at = -1;
+    let found = '';
+    for (const emoji of emojis) {
+      const index = rest.indexOf(emoji);
+      if (index < 0) continue;
+      if (at < 0 || index < at || (index === at && emoji.length > found.length)) {
+        at = index;
+        found = emoji;
+      }
+    }
+    if (at < 0) {
+      nodes.push(document.createTextNode(rest));
+      break;
+    }
+    if (at > 0) nodes.push(document.createTextNode(rest.slice(0, at)));
+    const mark = marks.get(found);
+    nodes.push(stickerImg(mark.sticker, mark.dim, 'sheet__emoji'));
+    rest = rest.slice(at + found.length);
+  }
+  el.replaceChildren(...nodes);
+}
+
+/** Carte sans affiche : le titre devient l'affiche. */
+function setTypographic(posterEl, title) {
   posterEl.classList.add('is-typographic');
   const span = document.createElement('span');
-  span.className = className;
+  span.className = 'card__fallback';
   span.textContent = title;
   posterEl.replaceChildren(span);
 }
@@ -102,7 +151,9 @@ export function createResults(rootEl, { onOpen } = {}) {
     entries = [];
     dom.strip.replaceChildren();
     clearState();
-    dom.state.textContent = EMPTY_MESSAGES[kind] || EMPTY_MESSAGES['no-results'];
+    const message = EMPTY_MESSAGES[kind];
+    if (!message) console.warn('[FRAME] état vide inconnu :', kind);
+    dom.state.textContent = message || EMPTY_MESSAGES['no-results'];
     dom.state.hidden = false;
   }
 
@@ -189,7 +240,9 @@ export function createResults(rootEl, { onOpen } = {}) {
     card.append(poster, title, meta, why);
     card.addEventListener('animationend', () => card.classList.remove('is-entering'));
     card.addEventListener('transitionend', event => {
-      if (event.propertyName === 'transform') card.classList.remove('is-sliding');
+      // Le survol transforme aussi .card__poster : sans ce filtre, sa transition
+      // annulerait le glissement FLIP de la carte.
+      if (event.target === card && event.propertyName === 'transform') card.classList.remove('is-sliding');
     });
     return card;
   }
@@ -212,7 +265,7 @@ export function createResults(rootEl, { onOpen } = {}) {
       meta.append(badge);
     }
 
-    fillEmojis(card.querySelector('.card__why'), whyParts(entry, placed).parts);
+    fillEmojis(card.querySelector('.card__why'), whyParts(entry, placed));
 
     if (!isNew) return;
     card.style.setProperty('--i', String(index));
@@ -225,7 +278,7 @@ export function createResults(rootEl, { onOpen } = {}) {
     if (posterEl.dataset.poster === String(url)) return;
     posterEl.dataset.poster = String(url);
     if (!url) {
-      setTypographic(posterEl, movie.title, 'card__fallback');
+      setTypographic(posterEl, movie.title);
       return;
     }
     posterEl.classList.remove('is-typographic');
@@ -234,7 +287,7 @@ export function createResults(rootEl, { onOpen } = {}) {
     img.alt = '';
     img.loading = 'lazy';
     // Affiche introuvable chez TMDB : la carte bascule en typographique.
-    img.addEventListener('error', () => setTypographic(posterEl, movie.title, 'card__fallback'), { once: true });
+    img.addEventListener('error', () => setTypographic(posterEl, movie.title), { once: true });
     img.src = url;
     posterEl.replaceChildren(img);
   }
@@ -329,37 +382,47 @@ export function createSheet(rootEl, { client, onJournal } = {}) {
       if (token !== openToken) return;
       const overview = (details && details.overview) || entry.movie.overview || NO_OVERVIEW;
       dom.overview.textContent = overview;
-    } catch {
+    } catch (error) {
       // Résumé de repli déjà en place : on n'alarme personne pour si peu.
+      console.warn('[FRAME] résumé TMDB indisponible :', error);
     }
   }
 
   function fill(entry, placed) {
     const movie = entry.movie;
+    const explanation = explain(entry, placed);
+    fillPoster(movie, explanation.honored);
+
+    dom.title.textContent = movie.title;
+    dom.meta.textContent = metaLine(movie);
+    fillSentence(dom.why, explanation);
+
+    dom.overview.textContent = movie.overview || NO_OVERVIEW;
+    dom.link.href = movieUrl(movie.id);
+  }
+
+  /**
+   * Affiche de la fiche. Sans affiche chez TMDB : aplat relevé, filet ambre,
+   * l'année en grand et les stickers qui ont trouvé le film. Le titre n'y
+   * figure pas, .sheet__title le porte déjà.
+   */
+  function fillPoster(movie, honored) {
     const url = posterUrl(movie.poster_path, 'w780');
     if (url) {
       dom.poster.classList.remove('is-typographic');
       dom.poster.replaceChildren(dom.img);
       dom.img.src = url;
-    } else {
-      dom.img.removeAttribute('src');
-      setTypographic(dom.poster, movie.title, 'sheet__fallback');
+      return;
     }
-
-    dom.title.textContent = movie.title;
-    dom.meta.textContent = metaLine(movie);
-
-    const { sentence, parts } = whyParts(entry, placed);
-    const line = document.createElement('span');
-    line.className = 'sheet__sentence';
-    line.textContent = sentence;
+    dom.img.removeAttribute('src');
+    dom.poster.classList.add('is-typographic');
+    const year = document.createElement('span');
+    year.className = 'sheet__poster-year';
+    year.textContent = yearOf(movie);
     const row = document.createElement('span');
-    row.className = 'sheet__emojis';
-    fillEmojis(row, parts);
-    dom.why.replaceChildren(line, row);
-
-    dom.overview.textContent = movie.overview || NO_OVERVIEW;
-    dom.link.href = movieUrl(movie.id);
+    row.className = 'sheet__poster-emojis';
+    row.append(...honored.map(sticker => stickerImg(sticker, false, 'sheet__poster-emoji')));
+    dom.poster.replaceChildren(year, row);
   }
 
   /** Année, note sur 10 avec une décimale, nombre de votes. Aucun pourcentage. */
@@ -415,22 +478,16 @@ export function createSheet(rootEl, { client, onJournal } = {}) {
 
   function onPointerDown(event) {
     if (dom.sheet.hidden || !event.isPrimary) return;
-    // Tant que le contenu peut défiler vers le haut, le geste lui appartient.
-    if (dom.panel.scrollTop > 0) return;
-    drag = { id: event.pointerId, startY: event.clientY, dy: 0, captured: false };
+    drag = { id: event.pointerId, startY: event.clientY, dy: 0 };
     dom.panel.classList.remove('is-settling');
+    // La capture échoue si le pointeur n'est plus actif : ce n'est pas grave,
+    // le geste se poursuit sans elle.
+    try { dom.grab.setPointerCapture(event.pointerId); } catch { /* pointeur déjà relâché */ }
   }
 
   function onPointerMove(event) {
     if (!drag || event.pointerId !== drag.id) return;
-    const dy = event.clientY - drag.startY;
-    drag.dy = Math.max(0, dy);
-    if (drag.dy > 6 && !drag.captured) {
-      // La capture échoue si le pointeur n'est plus actif : ce n'est pas grave,
-      // le geste se poursuit sans elle.
-      try { dom.panel.setPointerCapture(drag.id); } catch { /* pointeur déjà relâché */ }
-      drag.captured = true;
-    }
+    drag.dy = Math.max(0, event.clientY - drag.startY);
     dom.panel.style.transform = drag.dy ? 'translateY(' + drag.dy + 'px)' : '';
     dom.backdrop.style.opacity = String(Math.max(0.3, 1 - drag.dy / 400));
   }
@@ -459,10 +516,12 @@ export function createSheet(rootEl, { client, onJournal } = {}) {
   dom.backdrop.addEventListener('click', close);
   document.addEventListener('keydown', onEscape);
   dom.panel.addEventListener('keydown', onTabTrap);
-  dom.panel.addEventListener('pointerdown', onPointerDown);
-  dom.panel.addEventListener('pointermove', onPointerMove);
-  dom.panel.addEventListener('pointerup', onPointerUp);
-  dom.panel.addEventListener('pointercancel', endDrag);
+  // Le geste de fermeture se prend sur la poignée seule : le corps du panneau
+  // reste défilable au doigt (touch-action: pan-y).
+  dom.grab.addEventListener('pointerdown', onPointerDown);
+  dom.grab.addEventListener('pointermove', onPointerMove);
+  dom.grab.addEventListener('pointerup', onPointerUp);
+  dom.grab.addEventListener('pointercancel', endDrag);
   // Sans cela, glisser depuis l'affiche ou le lien lance un glisser-déposer
   // natif et le geste de fermeture est avalé.
   dom.panel.addEventListener('dragstart', event => event.preventDefault());
@@ -488,6 +547,13 @@ function buildSheetDom(rootEl) {
 
   const panel = document.createElement('div');
   panel.className = 'sheet__panel';
+
+  const grab = document.createElement('div');
+  grab.className = 'sheet__grab';
+  grab.setAttribute('aria-hidden', 'true');
+  const handle = document.createElement('span');
+  handle.className = 'sheet__handle';
+  grab.append(handle);
 
   const close = document.createElement('button');
   close.className = 'sheet__close';
@@ -528,8 +594,8 @@ function buildSheetDom(rootEl) {
   link.rel = 'noopener';
   link.textContent = 'Voir sur TMDB';
 
-  panel.append(close, poster, title, meta, why, overview, link);
+  panel.append(grab, close, poster, title, meta, why, overview, link);
   sheet.append(backdrop, panel);
   rootEl.replaceChildren(sheet);
-  return { sheet, backdrop, panel, close, poster, img, title, meta, why, overview, link };
+  return { sheet, backdrop, panel, grab, close, poster, img, title, meta, why, overview, link };
 }
