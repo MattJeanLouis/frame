@@ -1,12 +1,15 @@
-// La toile : structure DOM, gestes pointeur, clavier, atmosphères et particules.
+// La toile : structure DOM, gestes pointeur, clavier et atmosphères.
 // Le modèle reste immuable (src/board.js) ; ce module ne fait que le refléter
-// dans le DOM et remonter chaque modification par onChange.
+// dans le DOM et remonter chaque modification par onChange. Les particules sont
+// dans src/particles.js, le halo des stickers dans src/halo.js.
 
 import { STICKER_BY_ID, twemojiUrl } from './stickers.js';
 import {
   moveSticker, scaleSticker, flipSticker, removeSticker, bringToFront,
   SCALE_MIN, SCALE_MAX
 } from './board.js';
+import { createParticles } from './particles.js';
+import { haloColor } from './halo.js';
 
 export const SCALE_STEP = 0.25;
 export const MOVE_STEP = 0.02;
@@ -19,12 +22,8 @@ const TOOL_GAP = 10;           // px entre le sticker et la barre d'outils
 const TOOL_EDGE = 6;           // px de marge minimale entre la barre et le bord
 const ATMO_INTENSITY_MAX = 0.45;
 const ATMO_LIGHT_MAX = 0.4;
-const PARTICLE_CAP = 200;      // plafond dur, toutes atmosphères confondues
-const PARTICLE_BASE = { rain: 78, snow: 58, embers: 44, fog: 7 };
-const TAU = Math.PI * 2;
 
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
-const rand = (lo, hi) => lo + Math.random() * (hi - lo);
 const round3 = v => Math.round(v * 1000) / 1000;
 
 function hexToRgb(hex) {
@@ -32,50 +31,6 @@ function hexToRgb(hex) {
   if (!m) return null;
   const n = parseInt(m[1], 16);
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-}
-
-/* ── Halo des stickers (spec §6.1) ───────────────────────────────────────────
-   Le halo suit la couleur dominante du dessin : on lit une fois l'image
-   Twemoji dans un canevas minuscule et on retient sa teinte moyenne, pondérée
-   par l'opacité et la saturation pour que le gris ne délave pas la couleur.
-   En cas d'échec (canevas teinté, réseau), on renvoie null : pas de halo. */
-const haloCache = new Map();
-
-function haloColor(url) {
-  if (haloCache.has(url)) return haloCache.get(url);
-  const promise = new Promise(resolve => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onerror = () => resolve(null);
-    img.onload = () => {
-      try {
-        const size = 16;
-        const off = document.createElement('canvas');
-        off.width = size;
-        off.height = size;
-        const g = off.getContext('2d', { willReadFrequently: true });
-        g.drawImage(img, 0, 0, size, size);
-        const data = g.getImageData(0, 0, size, size).data;
-        let r = 0, gr = 0, b = 0, sum = 0;
-        for (let i = 0; i < data.length; i += 4) {
-          const a = data[i + 3] / 255;
-          if (a < 0.2) continue;
-          const max = Math.max(data[i], data[i + 1], data[i + 2]);
-          const min = Math.min(data[i], data[i + 1], data[i + 2]);
-          const sat = max === 0 ? 0 : (max - min) / max;
-          const w = a * (0.2 + sat);
-          r += data[i] * w; gr += data[i + 1] * w; b += data[i + 2] * w; sum += w;
-        }
-        if (sum <= 0) { resolve(null); return; }
-        resolve(`rgba(${Math.round(r / sum)}, ${Math.round(gr / sum)}, ${Math.round(b / sum)}, 0.32)`);
-      } catch {
-        resolve(null);
-      }
-    };
-    img.src = url;
-  });
-  haloCache.set(url, promise);
-  return promise;
 }
 
 /**
@@ -87,12 +42,13 @@ function haloColor(url) {
  */
 export function createCanvas(rootEl, { onChange, onSelect } = {}) {
   const dom = buildDom(rootEl);
-  const ctx = dom.particles.getContext('2d');
   const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const particles = createParticles(dom.particles, { reducedMotion: () => motionQuery.matches });
 
   let board = { items: [] };
   let selected = -1;
   let landing = new Set();       // index des stickers qui viennent d'arriver
+  let srText = '';               // dernière liste annoncée, pour ne pas la réécrire
   let destroyed = false;
 
   // Gestes en cours : un pointeur par doigt, plus l'état de pincement.
@@ -101,15 +57,7 @@ export function createCanvas(rootEl, { onChange, onSelect } = {}) {
   let dragMoved = 0;             // plus grand déplacement du geste, en px
   let swallowClick = false;      // un glissement vient d'avoir lieu : le clic est ignoré
   let gestureChanged = false;    // le geste a réellement modifié le tableau
-
-  // Particules.
-  let plan = [];                 // [[type, count], …]
-  let planKey = '';
-  let particles = [];
-  let rafId = 0;
-  let lastFrame = 0;
-  let viewW = 0, viewH = 0;      // taille de la toile en px CSS
-  let fogSprite = null;
+  let gestureBoard = null;       // tableau validé avant le geste, pour pointercancel
 
   const listeners = [];
   const on = (target, type, fn, opts) => {
@@ -153,6 +101,7 @@ export function createCanvas(rootEl, { onChange, onSelect } = {}) {
     img.alt = '';
     img.draggable = false;
     img.loading = 'lazy';
+    img.crossOrigin = 'anonymous';    // une seule requête, et le halo peut la lire
     el.append(img);
     // La classe d'arrivée se retire d'elle-même pour pouvoir se rejouer.
     el.addEventListener('animationend', () => el.classList.remove('is-landing'));
@@ -165,11 +114,11 @@ export function createCanvas(rootEl, { onChange, onSelect } = {}) {
 
     if (el.dataset.stickerId !== item.id) {
       el.dataset.stickerId = item.id;
-      const url = sticker ? twemojiUrl(sticker.emoji) : '';
-      el.firstElementChild.src = url;
+      const img = el.firstElementChild;
+      img.src = sticker ? twemojiUrl(sticker.emoji) : '';
       el.style.removeProperty('--halo');
-      if (url) {
-        haloColor(url).then(color => {
+      if (sticker) {
+        haloColor(img).then(color => {
           if (color && el.dataset.stickerId === item.id) el.style.setProperty('--halo', color);
         });
       }
@@ -183,8 +132,7 @@ export function createCanvas(rootEl, { onChange, onSelect } = {}) {
     el.setAttribute('aria-label', `${label}, sticker ${index + 1} sur ${total}`);
     el.setAttribute('aria-pressed', index === selected ? 'true' : 'false');
 
-    // Sans mouvement, rien à jouer : on n'accroche même pas la classe.
-    if (landing.has(index) && !motionQuery.matches) {
+    if (landing.has(index)) {
       el.classList.remove('is-landing');
       void el.offsetWidth;                 // force le redémarrage de l'animation
       el.classList.add('is-landing');
@@ -192,12 +140,15 @@ export function createCanvas(rootEl, { onChange, onSelect } = {}) {
   }
 
   function renderSr() {
-    dom.sr.textContent = board.items
+    const next = board.items
       .map(item => {
         const sticker = STICKER_BY_ID.get(item.id);
         return sticker ? sticker.label.toLowerCase() : item.id;
       })
       .join(', ');
+    if (next === srText) return;           // un glissement ne réannonce rien
+    srText = next;
+    dom.sr.textContent = next;
   }
 
   function renderToolbar() {
@@ -211,8 +162,8 @@ export function createCanvas(rootEl, { onChange, onSelect } = {}) {
     const rect = dom.canvas.getBoundingClientRect();
     const w = rect.width || 1;
     const h = rect.height || 1;
-    const tw = dom.toolbar.offsetWidth || 244;
-    const th = dom.toolbar.offsetHeight || 52;
+    const tw = dom.toolbar.offsetWidth;
+    const th = dom.toolbar.offsetHeight;
     const half = (BASE_SIZE * item.scale) / 2;
     const cx = item.x * w;
     const cy = item.y * h;
@@ -231,7 +182,7 @@ export function createCanvas(rootEl, { onChange, onSelect } = {}) {
   function renderAtmosphere() {
     let tr = 0, tg = 0, tb = 0, tintWeight = 0;
     let intensity = 0, light = 0;
-    const byType = new Map();
+    const plan = {};
 
     for (const item of board.items) {
       const sticker = STICKER_BY_ID.get(item.id);
@@ -245,7 +196,7 @@ export function createCanvas(rootEl, { onChange, onSelect } = {}) {
       }
       intensity += weight;
       light += (atmo.light || 0) * item.scale;
-      if (atmo.particles) byType.set(atmo.particles, (byType.get(atmo.particles) || 0) + weight);
+      if (atmo.particles) plan[atmo.particles] = (plan[atmo.particles] || 0) + weight;
     }
 
     const style = dom.canvas.style;
@@ -261,221 +212,13 @@ export function createCanvas(rootEl, { onChange, onSelect } = {}) {
     }
     style.setProperty('--atmo-light', String(round3(clamp(light, -ATMO_LIGHT_MAX, ATMO_LIGHT_MAX))));
 
-    syncParticles(byType);
-  }
-
-  /* ── Particules ─────────────────────────────────────────────────────────── */
-
-  function syncParticles(byType) {
-    // La densité suit la taille de la toile : même pluie sur 358 px et sur 640 px.
-    const density = viewW ? clamp(Math.sqrt(viewW * viewH) / 420, 0.75, 1.4) : 1;
-    const next = [];
-    let total = 0;
-    for (const type of Object.keys(PARTICLE_BASE)) {
-      const weight = byType.get(type);
-      if (!weight) continue;
-      const count = Math.max(4, Math.round(PARTICLE_BASE[type] * clamp(weight / 0.3, 0.5, 1.6) * density));
-      next.push([type, count]);
-      total += count;
-    }
-    if (total > PARTICLE_CAP) {
-      const k = PARTICLE_CAP / total;
-      for (const entry of next) entry[1] = Math.max(3, Math.floor(entry[1] * k));
-    }
-
-    const key = next.map(entry => entry[0] + ':' + entry[1]).join('|');
-    if (key === planKey) return;
-    planKey = key;
-    plan = next;
-    spawnParticles();
-
-    if (!plan.length) {
-      stopLoop();
-      clearParticles();
-    } else if (motionQuery.matches) {
-      stopLoop();
-      drawParticles();
-    } else {
-      startLoop();
-    }
-  }
-
-  function spawnParticles() {
-    particles = [];
-    if (!plan.length || !viewW || !viewH) return;
-    for (const [type, count] of plan) {
-      for (let i = 0; i < count; i++) particles.push(spawn(type, true));
-    }
-  }
-
-  function spawn(type, scattered) {
-    const x = Math.random() * viewW;
-    const y = Math.random() * viewH;
-    switch (type) {
-      case 'rain': {
-        const speed = rand(620, 1080);
-        return { type, x, y: scattered ? y : -20, vx: speed * 0.22, vy: speed,
-          w: rand(0.7, 1.4), a: rand(0.18, 0.42) };
-      }
-      case 'snow':
-        return { type, x, y: scattered ? y : -8, vy: rand(22, 56), amp: rand(6, 20),
-          sw: rand(0.4, 1.1), ph: Math.random() * TAU, r: rand(0.9, 2.4),
-          a: rand(0.3, 0.8), t: Math.random() * 10 };
-      case 'embers':
-        return { type, x, y: scattered ? y : viewH + 6, vy: rand(26, 78), amp: rand(4, 16),
-          sw: rand(0.6, 1.6), ph: Math.random() * TAU, r: rand(0.7, 2),
-          a: rand(0.3, 0.75), t: Math.random() * 10,
-          hue: Math.random() < 0.3 ? '255, 196, 120' : '242, 122, 60' };
-      case 'fog':
-      default:
-        return { type, x, y: rand(viewH * 0.2, viewH * 0.95), vx: rand(-16, 16) || 8,
-          r: rand(viewW * 0.18, viewW * 0.42), a: rand(0.03, 0.08), t: Math.random() * 10,
-          sw: rand(0.1, 0.3), ph: Math.random() * TAU };
-    }
-  }
-
-  function stepParticles(dt) {
-    for (let i = 0; i < particles.length; i++) {
-      const p = particles[i];
-      p.t = (p.t || 0) + dt;
-      switch (p.type) {
-        case 'rain':
-          p.x += p.vx * dt;
-          p.y += p.vy * dt;
-          if (p.y > viewH + 24 || p.x > viewW + 24) particles[i] = spawn('rain', false);
-          break;
-        case 'snow':
-          p.y += p.vy * dt;
-          p.x += Math.sin(p.t * p.sw + p.ph) * p.amp * dt;
-          if (p.y > viewH + 8) particles[i] = spawn('snow', false);
-          break;
-        case 'embers':
-          p.y -= p.vy * dt;
-          p.x += Math.sin(p.t * p.sw + p.ph) * p.amp * dt;
-          if (p.y < -8) particles[i] = spawn('embers', false);
-          break;
-        case 'fog':
-          p.x += p.vx * dt;
-          p.y += Math.sin(p.t * p.sw + p.ph) * 4 * dt;
-          if (p.x - p.r > viewW) p.x = -p.r;
-          if (p.x + p.r < 0) p.x = viewW + p.r;
-          break;
-      }
-    }
-  }
-
-  function getFogSprite() {
-    if (fogSprite) return fogSprite;
-    const c = document.createElement('canvas');
-    c.width = 128;
-    c.height = 128;
-    const g = c.getContext('2d');
-    const grad = g.createRadialGradient(64, 64, 0, 64, 64, 64);
-    grad.addColorStop(0, 'rgba(206, 214, 228, 0.9)');
-    grad.addColorStop(0.55, 'rgba(206, 214, 228, 0.35)');
-    grad.addColorStop(1, 'rgba(206, 214, 228, 0)');
-    g.fillStyle = grad;
-    g.fillRect(0, 0, 128, 128);
-    fogSprite = c;
-    return c;
-  }
-
-  function clearParticles() {
-    if (ctx) ctx.clearRect(0, 0, viewW, viewH);
-  }
-
-  function drawParticles() {
-    if (!ctx || !viewW || !viewH) return;
-    ctx.clearRect(0, 0, viewW, viewH);
-    if (!particles.length) return;
-
-    // Brouillard d'abord : c'est la nappe de fond.
-    const sprite = particles.some(p => p.type === 'fog') ? getFogSprite() : null;
-    if (sprite) {
-      for (const p of particles) {
-        if (p.type !== 'fog') continue;
-        ctx.globalAlpha = p.a;
-        ctx.drawImage(sprite, p.x - p.r, p.y - p.r, p.r * 2, p.r * 2);
-      }
-    }
-
-    ctx.lineCap = 'round';
-    ctx.strokeStyle = 'rgb(186, 210, 240)';
-    for (const p of particles) {
-      if (p.type !== 'rain') continue;
-      ctx.globalAlpha = p.a;
-      ctx.lineWidth = p.w;
-      ctx.beginPath();
-      ctx.moveTo(p.x, p.y);
-      ctx.lineTo(p.x - p.vx * 0.018, p.y - p.vy * 0.018);
-      ctx.stroke();
-    }
-
-    ctx.fillStyle = 'rgb(231, 240, 252)';
-    for (const p of particles) {
-      if (p.type !== 'snow') continue;
-      ctx.globalAlpha = p.a;
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, p.r, 0, TAU);
-      ctx.fill();
-    }
-
-    ctx.globalCompositeOperation = 'lighter';
-    for (const p of particles) {
-      if (p.type !== 'embers') continue;
-      const flicker = 0.55 + 0.45 * Math.sin(p.t * 5 + p.ph);
-      ctx.globalAlpha = p.a * flicker;
-      ctx.fillStyle = `rgb(${p.hue})`;
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, p.r, 0, TAU);
-      ctx.fill();
-    }
-
-    ctx.globalCompositeOperation = 'source-over';
-    ctx.globalAlpha = 1;
-  }
-
-  function loop(now) {
-    rafId = requestAnimationFrame(loop);
-    const dt = lastFrame ? Math.min(0.05, (now - lastFrame) / 1000) : 0.016;
-    lastFrame = now;
-    stepParticles(dt);
-    drawParticles();
-  }
-
-  function startLoop() {
-    if (rafId || motionQuery.matches || !particles.length) return;
-    lastFrame = 0;
-    rafId = requestAnimationFrame(loop);
-  }
-
-  function stopLoop() {
-    if (!rafId) return;
-    cancelAnimationFrame(rafId);
-    rafId = 0;
+    particles.setPlan(plan);
   }
 
   function resizeParticles() {
     const rect = dom.canvas.getBoundingClientRect();
-    const w = Math.round(rect.width);
-    const h = Math.round(rect.height);
-    if (!w || !h) return;
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const pw = Math.round(w * dpr);
-    const ph = Math.round(h * dpr);
-    const resized = w !== viewW || h !== viewH ||
-                    dom.particles.width !== pw || dom.particles.height !== ph;
-    if (!resized && particles.length) return;         // rien à refaire
-    viewW = w;
-    viewH = h;
-    if (resized) {
-      dom.particles.width = pw;                       // remet le canevas à zéro
-      dom.particles.height = ph;
-      if (ctx) ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    }
-    if (plan.length) spawnParticles();
-    if (!motionQuery.matches && particles.length) startLoop();
-    else drawParticles();
+    particles.resize(Math.round(rect.width), Math.round(rect.height),
+      Math.min(window.devicePixelRatio || 1, 2));
   }
 
   /* ── Sélection et modifications ─────────────────────────────────────────── */
@@ -505,6 +248,23 @@ export function createCanvas(rootEl, { onChange, onSelect } = {}) {
     return true;
   }
 
+  // Les opérations de board.js renvoient toujours un nouvel objet, même quand le
+  // bornage ramène à la valeur d'avant : on compare avant d'appliquer, sinon on
+  // empile des états d'annulation identiques au précédent.
+
+  function applyMove(index, item, x, y, commit) {
+    const nx = clamp(x, 0, 1);
+    const ny = clamp(y, 0, 1);
+    if (nx === item.x && ny === item.y) return false;
+    return apply(moveSticker(board, index, nx, ny), commit);
+  }
+
+  function applyScale(index, item, scale, commit) {
+    const next = clamp(scale, SCALE_MIN, SCALE_MAX);
+    if (next === item.scale) return false;
+    return apply(scaleSticker(board, index, next), commit);
+  }
+
   function indexOfEvent(event) {
     const el = event.target.closest && event.target.closest('.sticker');
     if (!el || el.parentElement !== dom.stickers) return -1;
@@ -525,6 +285,7 @@ export function createCanvas(rootEl, { onChange, onSelect } = {}) {
     event.preventDefault();
     const el = stickerEl(index);
     try { el.setPointerCapture(event.pointerId); } catch { /* capture facultative */ }
+    el.focus({ preventScroll: true });     // preventDefault a supprimé le focus natif
 
     // Deuxième doigt sur le même sticker : on bascule en pincement.
     const twin = [...pointers.values()].find(p => p.index === index);
@@ -544,6 +305,7 @@ export function createCanvas(rootEl, { onChange, onSelect } = {}) {
       dragMoved = 0;
       swallowClick = false;
       gestureChanged = false;
+      gestureBoard = board;                // point de retour si le geste est annulé
     }
 
     el.classList.add('is-dragging');
@@ -569,9 +331,7 @@ export function createCanvas(rootEl, { onChange, onSelect } = {}) {
       const pair = [...pointers.values()].filter(p => p.index === pinch.index).slice(0, 2);
       if (pair.length === 2) {
         const dist = Math.max(1, Math.hypot(pair[0].curX - pair[1].curX, pair[0].curY - pair[1].curY));
-        const ratio = dist / pinch.startDist;
-        const scale = clamp(pinch.startScale * ratio, SCALE_MIN, SCALE_MAX);
-        if (scale !== item.scale && apply(scaleSticker(board, pinch.index, scale), false)) {
+        if (applyScale(pinch.index, item, pinch.startScale * (dist / pinch.startDist), false)) {
           gestureChanged = true;
         }
       }
@@ -581,11 +341,9 @@ export function createCanvas(rootEl, { onChange, onSelect } = {}) {
     dragMoved = Math.max(dragMoved, Math.hypot(event.clientX - entry.startX, event.clientY - entry.startY));
     if (dragMoved > CLICK_SLOP) swallowClick = true;
 
-    const nx = clamp(entry.startItemX + (event.clientX - entry.startX) / w, 0, 1);
-    const ny = clamp(entry.startItemY + (event.clientY - entry.startY) / h, 0, 1);
-    if ((nx !== item.x || ny !== item.y) && apply(moveSticker(board, entry.index, nx, ny), false)) {
-      gestureChanged = true;
-    }
+    const nx = entry.startItemX + (event.clientX - entry.startX) / w;
+    const ny = entry.startItemY + (event.clientY - entry.startY) / h;
+    if (applyMove(entry.index, item, nx, ny, false)) gestureChanged = true;
 
     // Retour visuel du geste de suppression : le doigt sort franchement.
     const px = (event.clientX - rect.left) / w;
@@ -615,11 +373,12 @@ export function createCanvas(rootEl, { onChange, onSelect } = {}) {
       if (el && el.contains(document.activeElement)) dom.canvas.focus({ preventScroll: true });
       apply(removeSticker(board, entry.index), true);
       setSelected(-1);
+      endGesture();
       return;
     }
     // Fin du geste : on valide, mais seulement si le tableau a bougé.
     if (gestureChanged && onChange) onChange(board, { commit: true });
-    gestureChanged = false;
+    endGesture();
   }
 
   /* ── 4. pointercancel ───────────────────────────────────────────────────── */
@@ -634,7 +393,15 @@ export function createCanvas(rootEl, { onChange, onSelect } = {}) {
     }
     const el = stickerEl(entry.index);
     if (el) el.classList.remove('is-dragging', 'is-leaving');
+    // Geste avorté : le sticker revient à sa dernière position validée, et on ne
+    // laisse surtout pas app.js avec un état jamais confirmé.
+    if (gestureChanged && gestureBoard) apply(gestureBoard, false);
+    endGesture();
+  }
+
+  function endGesture() {
     gestureChanged = false;
+    gestureBoard = null;
   }
 
   function stillHolding(index) {
@@ -672,7 +439,7 @@ export function createCanvas(rootEl, { onChange, onSelect } = {}) {
     const item = board.items[index];
     if (!item) return;
     event.preventDefault();
-    apply(scaleSticker(board, index, item.scale - Math.sign(event.deltaY) * SCALE_STEP), true);
+    applyScale(index, item, item.scale - Math.sign(event.deltaY) * SCALE_STEP, true);
   }
 
   /* ── 6. double clic ─────────────────────────────────────────────────────── */
@@ -707,19 +474,17 @@ export function createCanvas(rootEl, { onChange, onSelect } = {}) {
 
     switch (button.dataset.action) {
       case 'grow':
-        apply(scaleSticker(board, index, item.scale + SCALE_STEP), true);
+        applyScale(index, item, item.scale + SCALE_STEP, true);
         break;
       case 'shrink':
-        apply(scaleSticker(board, index, item.scale - SCALE_STEP), true);
+        applyScale(index, item, item.scale - SCALE_STEP, true);
         break;
       case 'flip':
         apply(flipSticker(board, index), true);
         break;
-      case 'front': {
-        const changed = apply(bringToFront(board, index), true);
-        if (changed) setSelected(board.items.length - 1);
+      case 'front':
+        if (apply(bringToFront(board, index), true)) setSelected(board.items.length - 1);
         break;
-      }
       case 'remove':
         dom.canvas.focus({ preventScroll: true });
         apply(removeSticker(board, index), true);
@@ -747,29 +512,29 @@ export function createCanvas(rootEl, { onChange, onSelect } = {}) {
     switch (event.key) {
       case 'ArrowLeft':
         event.preventDefault();
-        apply(moveSticker(board, index, item.x - step, item.y), true);
+        applyMove(index, item, item.x - step, item.y, true);
         break;
       case 'ArrowRight':
         event.preventDefault();
-        apply(moveSticker(board, index, item.x + step, item.y), true);
+        applyMove(index, item, item.x + step, item.y, true);
         break;
       case 'ArrowUp':
         event.preventDefault();
-        apply(moveSticker(board, index, item.x, item.y - step), true);
+        applyMove(index, item, item.x, item.y - step, true);
         break;
       case 'ArrowDown':
         event.preventDefault();
-        apply(moveSticker(board, index, item.x, item.y + step), true);
+        applyMove(index, item, item.x, item.y + step, true);
         break;
       case '+':
       case '=':
         event.preventDefault();
-        apply(scaleSticker(board, index, item.scale + SCALE_STEP), true);
+        applyScale(index, item, item.scale + SCALE_STEP, true);
         break;
       case '-':
       case '_':
         event.preventDefault();
-        apply(scaleSticker(board, index, item.scale - SCALE_STEP), true);
+        applyScale(index, item, item.scale - SCALE_STEP, true);
         break;
       case 'r':
       case 'R':
@@ -804,17 +569,13 @@ export function createCanvas(rootEl, { onChange, onSelect } = {}) {
 
   function onResize() {
     resizeParticles();
-    renderAtmosphere();      // la densité de particules dépend de la taille
     renderToolbar();
   }
 
+  // 13. Le réglage système peut changer en cours de route : on repasse le plan,
+  // le moteur décide alors d'animer ou de figer.
   function onMotionChange() {
-    if (motionQuery.matches) {
-      stopLoop();
-      drawParticles();
-    } else if (particles.length) {
-      startLoop();
-    }
+    renderAtmosphere();
   }
 
   on(dom.stickers, 'pointerdown', onPointerDown);
@@ -837,6 +598,7 @@ export function createCanvas(rootEl, { onChange, onSelect } = {}) {
   /* ── Poignée publique ───────────────────────────────────────────────────── */
 
   function setBoard(next) {
+    if (destroyed) return;
     const previous = board;
     board = next && Array.isArray(next.items) ? next : { items: [] };
     landing = computeLanding(previous.items, board.items, pointers);
@@ -850,13 +612,14 @@ export function createCanvas(rootEl, { onChange, onSelect } = {}) {
   }
 
   function select(index) {
+    if (destroyed) return;
     setSelected(index);
   }
 
   function destroy() {
     if (destroyed) return;
     destroyed = true;
-    stopLoop();
+    particles.destroy();
     for (const [target, type, fn, opts] of listeners) target.removeEventListener(type, fn, opts);
     listeners.length = 0;
     pointers.clear();

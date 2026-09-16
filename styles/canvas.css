@@ -151,6 +151,13 @@
   }
 }
 
+/* Sans mouvement, le sticker arrive quand même : en fondu seul (spec §6.1,
+   « supprime les déplacements et garde les fondus »). */
+@keyframes sticker-landing-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
 /* Barre d'outils du sticker sélectionné, placée en JS. */
 .canvas__toolbar {
   position: absolute;
@@ -235,7 +242,7 @@
   }
 
   .sticker.is-landing {
-    animation: none;
+    animation: sticker-landing-fade 220ms linear both;
   }
 
   .canvas__toolbar {
