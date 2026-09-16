@@ -22,7 +22,7 @@ test('scopeLabel suit les trois paliers de la spec §6.4', () => {
 });
 
 test('defaultBoardName joint les libellés des trois premiers stickers', () => {
-  assert.equal(defaultBoardName(EXAMPLES[0].board), 'Ville la nuit + Pluie + Néon violet');
+  assert.equal(defaultBoardName(EXAMPLES[0].board), 'Ville la nuit + Pluie + Lunettes noires');
   assert.equal(defaultBoardName(EXAMPLES[1].board), 'Forêt + Brouillard + Loup');
 });
 

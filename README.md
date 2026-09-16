@@ -9,7 +9,7 @@ le tableau devient la requête, six films arrivent.
 npm run serve
 ```
 
-Puis ouvre http://localhost:8080. L'application a besoin d'un serveur : ouvrir
+Puis ouvre http://localhost:8090. L'application a besoin d'un serveur : ouvrir
 `index.html` directement depuis le disque ne fonctionne pas, les modules ES sont bloqués.
 
 ## Clé TMDB

@@ -28,6 +28,7 @@ export const DEBOUNCE_MS = 400;
 /** Profondeur de la pile d'annulation (spec §6.3). */
 export const HISTORY_MAX = 50;
 
+const HASH_THROTTLE_MS = 200;            // écriture du fragment pendant un geste
 const CLEAR_TOAST_MS = 5000;
 const COPY_TOAST_MS = 2000;
 const LINK_TOAST_MS = 12000;
@@ -38,6 +39,7 @@ const KEY_SHAPE_ERROR = 'Cette clé n\'a pas la bonne forme. Une clé v3 fait 32
 const KEY_REFUSED = 'TMDB a refusé cette clé.';
 const KEY_OFFLINE = 'Impossible de joindre TMDB. Vérifie ta connexion.';
 const SAVE_HINT_EMPTY = 'Pose au moins un sticker avant de sauvegarder.';
+const SAVED_UNREADABLE = 'Ce tableau sauvegardé n\'est plus lisible.';
 
 const DATE_FMT = new Intl.DateTimeFormat('fr-FR', { dateStyle: 'medium' });
 const DATE_TIME_FMT = new Intl.DateTimeFormat('fr-FR', { dateStyle: 'medium', timeStyle: 'short' });
@@ -72,7 +74,7 @@ const PANELS_HTML = `
     </div>
     <div class="panel__pane" id="pane-saved" role="tabpanel" aria-labelledby="tab-saved">
       <label class="panel__label" for="board-name">Nom du tableau</label>
-      <input class="panel__input" id="board-name" type="text" maxlength="40">
+      <input class="panel__input panel__input--text" id="board-name" type="text" maxlength="60">
       <button class="panel__action hbtn" type="button" id="btn-save-board">Sauvegarder ce tableau</button>
       <ul class="panel__list" id="saved-list"></ul>
       <p class="panel__empty" id="saved-empty">Aucun tableau sauvegardé pour l'instant.</p>
@@ -95,6 +97,7 @@ const PANELS_HTML = `
       <li>Ouvre Réglages, puis API, et demande une clé.</li>
       <li>Colle ici la clé v3 ou le jeton de lecture v4.</li>
     </ol>
+    <p class="panel__note">Ta clé reste dans ton navigateur et n'est envoyée qu'à TMDB.</p>
     <a class="panel__link" href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener">Ouvrir la page API de TMDB</a>
     <label class="panel__label" for="key-input">Clé ou jeton</label>
     <input class="panel__input" id="key-input" type="password" autocomplete="off" spellcheck="false" placeholder="eyJ… ou 32 caractères">
@@ -102,6 +105,37 @@ const PANELS_HTML = `
     <button class="panel__action hbtn" type="button" id="btn-key-save">Valider et enregistrer</button>
   </div>
 </div>`;
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+// Flèches courbes d'annulation : [arc, pointe]. Une police ne rend ↶ et ↷
+// lisibles ni à 36 px ni partout ; ces deux traits, si.
+const ARROWS = {
+  undo: ['M4 8h9a5 5 0 1 1 0 10H8', '8 4 4 8 8 12'],
+  redo: ['M20 8h-9a5 5 0 1 0 0 10h5', '16 4 20 8 16 12']
+};
+
+/** Icône 18×18, trait de 2 px à la couleur du texte. Le nom vient de l'aria-label du bouton. */
+function arrowIcon(kind) {
+  const [arc, head] = ARROWS[kind];
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('width', '18');
+  svg.setAttribute('height', '18');
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-width', '2');
+  svg.setAttribute('stroke-linecap', 'round');
+  svg.setAttribute('stroke-linejoin', 'round');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('focusable', 'false');
+  const path = document.createElementNS(SVG_NS, 'path');
+  path.setAttribute('d', arc);
+  const tip = document.createElementNS(SVG_NS, 'polyline');
+  tip.setAttribute('points', head);
+  svg.append(path, tip);
+  return svg;
+}
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
@@ -195,6 +229,8 @@ function start() {
   let timer = 0;
   let run = 0;                 // numéro de la recherche en cours
   let ownHash = location.hash; // dernier fragment écrit par nous
+  let hashTimer = 0;           // fenêtre d'attente entre deux écritures de fragment
+  let hashPending = false;
   let toastTimer = 0;
   let openedPanel = null;
   let lastFocused = null;
@@ -273,23 +309,47 @@ function start() {
   function preview(next) {
     if (next === board) return;
     board = next;
-    settle();
+    settle({ hash: queueHash });
   }
 
   /** Ce que toute modification du tableau entraîne, geste en cours ou non. */
-  function settle() {
-    writeHash();
+  function settle({ hash = writeHash } = {}) {
+    hash();
     renderChrome();
     hideExamples();
     hideNotice();
     schedule();
   }
 
+  /**
+   * Fragment d'un geste en cours : une écriture tout de suite, puis au plus une
+   * toutes les HASH_THROTTLE_MS, avec une dernière garantie à la fin. Safari
+   * compte les replaceState et refuse au-delà d'une centaine par dix secondes :
+   * une écriture par image de glissement y passerait largement.
+   */
+  function queueHash() {
+    if (hashTimer) {
+      hashPending = true;
+      return;
+    }
+    writeHash();
+    hashTimer = setTimeout(() => {
+      hashTimer = 0;
+      if (hashPending) queueHash();
+    }, HASH_THROTTLE_MS);
+  }
+
   function writeHash() {
+    hashPending = false;
     const url = boardToUrl(board, location.href);
     const at = url.indexOf('#');
     ownHash = at < 0 ? '' : url.slice(at);
-    history.replaceState(null, '', url);
+    // Un refus du navigateur (quota d'historique) ne doit jamais casser le geste.
+    try {
+      history.replaceState(null, '', url);
+    } catch (error) {
+      console.warn('[FRAME] fragment non réécrit :', error);
+    }
   }
 
   function renderChrome() {
@@ -332,21 +392,22 @@ function start() {
         pools[id] = await client.stickerPools(STICKER_BY_ID.get(id));
         if (mine !== run) return;
       }
+
+      const entries = selectMovies(placed, pools, lastSelection, boardSeedKey(board));
+      if (mine !== run) return;
+      if (!entries.length) {
+        results.setEmpty('no-results');
+        return;
+      }
+      // Seul moment orchestré : le premier résultat après le premier sticker.
+      results.setSelection(entries, placed, { animateFirst: lastSelection.length === 0 });
+      lastSelection = entries;
     } catch (error) {
+      // Le tri et l'affichage sont dans le même essai : une exception inattendue
+      // ne doit pas laisser la bande en chargement perpétuel.
       if (mine !== run) return;
       handleSearchError(error);
-      return;
     }
-
-    const entries = selectMovies(placed, pools, lastSelection, boardSeedKey(board));
-    if (mine !== run) return;
-    if (!entries.length) {
-      results.setEmpty('no-results');
-      return;
-    }
-    // Seul moment orchestré : le premier résultat après le premier sticker.
-    results.setSelection(entries, placed, { animateFirst: lastSelection.length === 0 });
-    lastSelection = entries;
   }
 
   /** Les cartes déjà affichées restent en place, quelle que soit l'erreur. */
@@ -356,6 +417,9 @@ function start() {
       clearCredential();
       credential = '';
       openKey(KEY_REFUSED);
+      // L'identifiant vient d'être jeté : la bande le dit et sort du chargement,
+      // sans quoi les cartes resteraient estompées indéfiniment.
+      results.setEmpty('no-key');
       return;
     }
     if (status === 429) {
@@ -367,7 +431,11 @@ function start() {
       return;
     }
     console.warn('[FRAME] recherche impossible :', error);
-    results.setError('TMDB n\'a pas répondu (' + status + ').', search);
+    // Statut absent : l'erreur ne vient pas de TMDB, on reste sobre.
+    const message = status === null
+      ? 'TMDB n\'a pas répondu.'
+      : 'TMDB n\'a pas répondu (' + status + ').';
+    results.setError(message, search);
   }
 
   /* ── Annuler, rétablir, vider ─────────────────────────────────────────── */
@@ -573,9 +641,6 @@ function start() {
     refreshSaved();
     refreshPaths();
     panels.boardName.value = defaultBoardName(board);
-    const empty = board.items.length === 0;
-    panels.saveBoard.disabled = empty;
-    panels.saveBoard.title = empty ? SAVE_HINT_EMPTY : '';
     openPanel(panels.boards);
   }
 
@@ -604,7 +669,8 @@ function start() {
 
     const thumb = document.createElement('span');
     thumb.className = 'panel__thumb';
-    fillThumb(thumb, decodeBoard(entry.encoded).board);
+    const decoded = decodeBoard(entry.encoded);
+    if (decoded.error === null) fillThumb(thumb, decoded.board);
 
     const name = document.createElement('span');
     name.className = 'panel__item-name';
@@ -666,12 +732,22 @@ function start() {
     if (!load) return;
     const entry = loadBoards().find(saved => saved.id === load.dataset.boardId);
     if (!entry) return;
-    commit(decodeBoard(entry.encoded).board);
+    const { board: saved, error } = decodeBoard(entry.encoded);
     closePanel();
+    // Entrée écrite par une version antérieure, ou abîmée : on n'écrase rien.
+    if (error !== null) {
+      showNotice(SAVED_UNREADABLE);
+      return;
+    }
+    commit(saved);
   }
 
   function onSaveBoard() {
-    if (!board.items.length) return;
+    // Le bouton reste actif : il explique le refus plutôt que de rester inerte.
+    if (!board.items.length) {
+      showToast(SAVE_HINT_EMPTY, { duration: CLEAR_TOAST_MS });
+      return;
+    }
     const name = panels.boardName.value.trim() || defaultBoardName(board);
     saveBoard({ name, encoded: encodeBoard(board) });
     refreshSaved();
@@ -730,7 +806,9 @@ function start() {
     if (location.hash === ownHash) return;
     const { board: next, error } = decodeBoard(location.hash);
     ownHash = location.hash;
-    commit(next, { push: false });
+    // Un lien ouvert de l'extérieur remplace le tableau : il s'empile, pour que
+    // celui qu'on avait sous les yeux reste à une annulation de distance.
+    commit(next);
     if (error && error !== 'empty') showNotice(NOTICE_TEXT);
   }
 
@@ -764,6 +842,8 @@ function start() {
 
   /* ── Premier affichage ────────────────────────────────────────────────── */
 
+  headerEl.undo.replaceChildren(arrowIcon('undo'));
+  headerEl.redo.replaceChildren(arrowIcon('redo'));
   drawer.setActiveDrawer(DEFAULT_DRAWER);
 
   const restored = decodeBoard(location.hash);

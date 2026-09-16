@@ -46,7 +46,7 @@ test('package.json est sans dépendance et en modules ES', () => {
   const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
   assert.equal(pkg.type, 'module');
   assert.equal(pkg.scripts.test, 'node --test "tests/**/*.test.mjs"');
-  assert.equal(pkg.scripts.serve, 'python3 -m http.server 8080');
+  assert.equal(pkg.scripts.serve, 'python3 -m http.server 8090');
   assert.equal(pkg.dependencies, undefined);
   assert.equal(pkg.devDependencies, undefined);
 });

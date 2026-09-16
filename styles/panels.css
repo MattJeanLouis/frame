@@ -119,6 +119,11 @@
   font-size: var(--fs-sm);
 }
 
+.panel__note {
+  color: var(--c-text-dim);
+  font-size: var(--fs-sm);
+}
+
 .panel__link {
   justify-self: start;
   color: var(--c-accent);
@@ -145,6 +150,12 @@
   color: var(--c-text);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: var(--fs-sm);
+}
+
+/* Un nom de tableau est du texte, pas un jeton : il garde la police du site. */
+.panel__input--text {
+  font-family: var(--ff-text);
+  font-size: var(--fs-md);
 }
 
 .panel__input::placeholder {
@@ -560,6 +571,21 @@
     max-width: 480px;
     border-radius: var(--r-lg);
     animation-name: panel-in;
+  }
+
+  /* L'accueil se cale sur la toile, qui commence à la gouttière. */
+  .examples {
+    margin-inline: 0;
+    background: color-mix(in srgb, var(--c-bg) 92%, transparent);
+  }
+
+  /* Et il se lit comme une carte posée sur la toile, sans vide autour du texte. */
+  .examples__inner {
+    background: var(--c-surface);
+    border: 1px solid var(--c-line);
+    border-radius: var(--r-lg);
+    box-shadow: var(--sh-raised);
+    padding: var(--sp-5) var(--sp-6);
   }
 
   /* La toile est deux fois plus grande qu'au téléphone : l'accueil suit. */

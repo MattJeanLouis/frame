@@ -97,6 +97,19 @@ body {
   flex: 0 0 auto;
 }
 
+/* Les deux pastilles d'historique portent une icône dessinée, posée au centre. */
+#btn-undo,
+#btn-redo {
+  display: grid;
+  place-items: center;
+  color: var(--c-text-dim);
+}
+
+#btn-undo:hover,
+#btn-redo:hover {
+  color: var(--c-text);
+}
+
 .hbtn {
   height: var(--hit-min);
   min-width: var(--hit-min);
@@ -166,17 +179,14 @@ body {
 }
 
 /* La largeur de la toile sert aussi à l'accueil qui se pose par-dessus :
-   elle vit ici, sur la scène, pour n'être écrite qu'une fois. */
+   elle vit ici, sur la scène, pour n'être écrite qu'une fois. La scène, elle,
+   garde toute sa colonne : en mode liste, les chips l'occupent entièrement. */
 #stage {
   position: relative;
   display: grid;
   gap: var(--sp-3);
   justify-items: stretch;
   min-width: 0;
-  /* Barre et tiroir s'alignent sur la toile plutôt que de flotter plus large. */
-  max-width: var(--canvas-w);
-  margin-inline: auto;
-  width: 100%;
   --canvas-w: var(--canvas-max-phone);
 }
 
@@ -193,8 +203,18 @@ body {
     --canvas-w: min(var(--canvas-max-desk), calc(100dvh - 300px));
   }
 
-  /* Deux niveaux pour passer devant la règle de canvas.css, chargée après. */
+  /* Deux niveaux pour passer devant la règle de canvas.css, chargée après.
+     La toile commence à la gouttière, comme l'en-tête et le pied de page,
+     au lieu de flotter au milieu de sa colonne. */
   #canvas-host .canvas {
+    max-width: var(--canvas-w);
+    margin-inline: 0;
+  }
+
+  /* Barre et tiroir suivent la toile. En mode liste il n'y a pas de toile :
+     les chips gardent alors toute la largeur de la colonne. */
+  #stage:has(.canvas) #stage-bar,
+  #stage:has(.canvas) #drawer-host {
     max-width: var(--canvas-w);
   }
 

@@ -7,7 +7,7 @@ export const EXAMPLES = [
     board: { items: [
       { id: 'city_night',    x: 0.34, y: 0.42, scale: 1.8, flip: false },
       { id: 'rain',          x: 0.72, y: 0.24, scale: 1.2, flip: false },
-      { id: 'violet_neon',   x: 0.18, y: 0.74, scale: 0.9, flip: false },
+      { id: 'sunglasses',    x: 0.18, y: 0.74, scale: 0.9, flip: false },
       { id: 'leather_coat',  x: 0.62, y: 0.64, scale: 1.1, flip: true  },
       { id: 'car',           x: 0.84, y: 0.78, scale: 0.8, flip: false }
     ] }
