@@ -1,1 +1,128 @@
-/* Tiroir — rempli en tâche 8. */
+/* Tiroir de stickers — rangée d'onglets et grille de tuiles.
+   Le tiroir défile dans son propre conteneur ; la page, jamais. */
+
+.drawer {
+  display: grid;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+/* #drawer-host est une cellule de la grille de #stage : sans min-width: 0 sa
+   taille minimale serait celle de son contenu et la page déborderait. */
+#drawer-host {
+  min-width: 0;
+}
+
+/* ── Onglets ─────────────────────────────────────────────────────────────── */
+
+.drawer__tabs {
+  display: flex;
+  gap: var(--sp-1);
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  padding-block: var(--sp-1);
+}
+
+.drawer__tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.drawer__tab {
+  flex: 0 0 auto;
+  height: var(--hit-min);
+  padding-inline: var(--sp-3);
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-full);
+  background: transparent;
+  color: var(--c-text-dim);
+  font-family: var(--ff-display);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semi);
+  letter-spacing: var(--ls-caps);
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color var(--d-fast) var(--e-out),
+              background-color var(--d-fast) var(--e-out),
+              border-color var(--d-fast) var(--e-out);
+}
+
+.drawer__tab:hover {
+  color: var(--c-text);
+  border-color: var(--c-line-strong);
+}
+
+.drawer__tab[aria-selected="true"] {
+  color: var(--c-accent-ink);
+  background: var(--c-accent);
+  border-color: var(--c-accent);
+}
+
+/* ── Grille de stickers ──────────────────────────────────────────────────── */
+
+.drawer__grid {
+  display: flex;
+  gap: var(--sp-2);
+  height: var(--drawer-h);
+  align-items: center;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x proximity;
+  padding-inline: var(--sp-1);
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.drawer__grid::-webkit-scrollbar {
+  display: none;
+}
+
+.drawer__tile {
+  /* Sans bloc conteneur, le libellé en .sr-only se positionnerait par rapport
+     au bloc initial : il échapperait au défilement du tiroir et étirerait la
+     page bien au-delà de l'écran. */
+  position: relative;
+  flex: 0 0 auto;
+  width: var(--drawer-tile);
+  height: var(--drawer-tile);
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-md);
+  background: var(--c-surface);
+  scroll-snap-align: start;
+  cursor: pointer;
+  padding: 0;
+  transition: transform var(--d-fast) var(--e-spring),
+              border-color var(--d-fast) var(--e-out),
+              opacity var(--d-base) var(--e-out);
+}
+
+.drawer__tile:hover,
+.drawer__tile:focus-visible {
+  transform: translateY(-2px);
+  border-color: var(--c-line-strong);
+}
+
+.drawer__tile:active {
+  transform: scale(0.92);
+}
+
+.drawer__img {
+  width: 36px;
+  height: 36px;
+  pointer-events: none;
+}
+
+/* ── Toile pleine ────────────────────────────────────────────────────────── */
+
+.drawer.is-full .drawer__tile {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.drawer__full {
+  color: var(--c-error);
+  font-size: var(--fs-sm);
+}
