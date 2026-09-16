@@ -80,6 +80,8 @@ body {
   background: var(--c-bg);
 }
 
+/* Les quatre boutons doivent tenir à 360 px sans jamais déborder : eux ne
+   rétrécissent pas, c'est le nom qui cède en dernier recours. */
 #brand {
   font-family: var(--ff-display);
   font-weight: var(--fw-black);
@@ -87,6 +89,12 @@ body {
   letter-spacing: var(--ls-brand);
   text-transform: uppercase;
   margin-right: auto;
+  min-width: 0;
+  overflow: hidden;
+}
+
+#header .hbtn {
+  flex: 0 0 auto;
 }
 
 .hbtn {
@@ -97,6 +105,48 @@ body {
   border-radius: var(--r-full);
   font-size: var(--fs-sm);
   padding-inline: var(--sp-3);
+}
+
+/* Téléphone : les cinq éléments de l'en-tête tiennent côte à côte plutôt que
+   de déborder. Le nom rétrécit, les pastilles se resserrent, annuler et
+   rétablir se réduisent à leur icône. Vérifié à 390 px et à 360 px. */
+@media (max-width: 460px) {
+  #header {
+    gap: var(--sp-1);
+  }
+
+  #brand {
+    font-size: var(--fs-sm);
+    letter-spacing: 0.10em;
+  }
+
+  #header .hbtn {
+    padding-inline: var(--sp-2);
+  }
+
+  #btn-undo,
+  #btn-redo {
+    min-width: 0;
+    width: 40px;
+    padding-inline: 0;
+  }
+}
+
+@media (max-width: 380px) {
+  #brand {
+    font-size: var(--fs-xs);
+    letter-spacing: 0.08em;
+  }
+
+  #header .hbtn {
+    font-size: var(--fs-xs);
+    padding-inline: 6px;
+  }
+
+  #btn-undo,
+  #btn-redo {
+    width: 36px;
+  }
 }
 
 .hbtn:hover {
@@ -115,6 +165,21 @@ body {
   padding: var(--sp-4) var(--gutter) var(--sp-6);
 }
 
+/* La largeur de la toile sert aussi à l'accueil qui se pose par-dessus :
+   elle vit ici, sur la scène, pour n'être écrite qu'une fois. */
+#stage {
+  position: relative;
+  display: grid;
+  gap: var(--sp-3);
+  justify-items: stretch;
+  min-width: 0;
+  /* Barre et tiroir s'alignent sur la toile plutôt que de flotter plus large. */
+  max-width: var(--canvas-w);
+  margin-inline: auto;
+  width: 100%;
+  --canvas-w: var(--canvas-max-phone);
+}
+
 @media (min-width: 900px) {
   #main {
     grid-template-columns: minmax(0, var(--canvas-max-desk)) minmax(0, 1fr);
@@ -123,18 +188,19 @@ body {
 
   #stage {
     grid-column: 1;
+    /* Bornée par la hauteur de fenêtre : sans cela, une toile de 640 px pousse
+       le tiroir sous la ligne de flottaison sur un écran de 800 px de haut. */
+    --canvas-w: min(var(--canvas-max-desk), calc(100dvh - 300px));
+  }
+
+  /* Deux niveaux pour passer devant la règle de canvas.css, chargée après. */
+  #canvas-host .canvas {
+    max-width: var(--canvas-w);
   }
 
   #results-host {
     grid-column: 2;
   }
-}
-
-#stage {
-  display: grid;
-  gap: var(--sp-3);
-  justify-items: stretch;
-  min-width: 0;
 }
 
 /* Cellules de grille qui hébergent un contenu défilant : sans min-width: 0

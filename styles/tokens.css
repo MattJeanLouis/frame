@@ -66,6 +66,7 @@
   --d-base: 200ms;
   --d-slow: 360ms;
   --d-stagger: 40ms;       /* décalage entre cartes de résultats */
+  --d-fade: 200ms;         /* fondus : jamais nul, même en mouvement réduit */
   --d-debounce: 400ms;     /* miroir JS : DEBOUNCE_MS dans app.js */
   --e-out: cubic-bezier(0.2, 0.8, 0.2, 1);
   --e-in-out: cubic-bezier(0.4, 0, 0.2, 1);
@@ -95,5 +96,6 @@
     --d-base: 0ms;
     --d-slow: 0ms;
     --d-stagger: 0ms;
+    /* --d-fade garde sa valeur : §6.1 supprime les déplacements, pas les fondus. */
   }
 }

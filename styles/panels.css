@@ -1,1 +1,576 @@
-/* Panneaux — rempli en tâche 9. */
+/* Panneaux (Mes tableaux, clé TMDB), accueil à trois exemples, mode liste,
+   avis et toast. Spec §6.4, §6.5, §6.6, §8. */
+
+/* ── Panneaux ─────────────────────────────────────────────────────────────── */
+
+.panel {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-panel);
+  display: grid;
+  place-items: end stretch;
+}
+
+.panel[hidden] {
+  display: none;
+}
+
+.panel__backdrop {
+  position: absolute;
+  inset: 0;
+  background: var(--c-overlay);
+  backdrop-filter: blur(6px);
+  animation: panel-fade var(--d-fade) var(--e-out) backwards;
+}
+
+.panel__body {
+  position: relative;
+  background: var(--c-surface);
+  padding: var(--sp-5) var(--gutter) var(--sp-6);
+  max-height: 90dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  box-shadow: var(--sh-panel);
+  display: grid;
+  /* Une seule colonne, qui ne s'élargit jamais au contenu : sans minmax(0, 1fr)
+     un nom de tableau un peu long pousserait le panneau hors de l'écran. */
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--sp-3);
+  align-content: start;
+  border-radius: var(--r-lg) var(--r-lg) 0 0;
+  animation: panel-up var(--d-base) var(--e-out) backwards;
+}
+
+.panel__title {
+  font-family: var(--ff-display);
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-bold);
+  /* La place du bouton de fermeture, qui flotte par-dessus. */
+  padding-right: var(--hit-min);
+}
+
+.panel__close {
+  position: absolute;
+  top: var(--sp-3);
+  right: var(--gutter);
+  display: grid;
+  place-items: center;
+  color: var(--c-text-dim);
+  cursor: pointer;
+}
+
+.panel__close:hover {
+  color: var(--c-text);
+}
+
+/* ── Onglets ──────────────────────────────────────────────────────────────── */
+
+.panel__tabs {
+  display: flex;
+  gap: var(--sp-4);
+  border-bottom: 1px solid var(--c-line);
+}
+
+.panel__tab {
+  min-height: var(--hit-min);
+  padding: 0;
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  color: var(--c-text-dim);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  transition: color var(--d-fast) var(--e-out);
+}
+
+.panel__tab:hover {
+  color: var(--c-text);
+}
+
+.panel__tab[aria-selected="true"] {
+  color: var(--c-text);
+  border-bottom-color: var(--c-accent);
+}
+
+.panel__pane {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--sp-3);
+}
+
+.panel__pane[hidden] {
+  display: none;
+}
+
+/* ── Textes, champs, actions ──────────────────────────────────────────────── */
+
+.panel__lead {
+  color: var(--c-text-dim);
+  font-size: var(--fs-md);
+}
+
+.panel__steps {
+  list-style: decimal;
+  padding-left: 1.3em;
+  display: grid;
+  gap: var(--sp-1);
+  color: var(--c-text-dim);
+  font-size: var(--fs-sm);
+}
+
+.panel__link {
+  justify-self: start;
+  color: var(--c-accent);
+  font-size: var(--fs-sm);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.panel__label {
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-caps);
+  color: var(--c-text-dim);
+  margin-bottom: calc(var(--sp-2) * -1);
+}
+
+.panel__input {
+  width: 100%;
+  height: var(--hit-min);
+  padding-inline: var(--sp-3);
+  background: var(--c-bg);
+  border: 1px solid var(--c-line-strong);
+  border-radius: var(--r-md);
+  color: var(--c-text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--fs-sm);
+}
+
+.panel__input::placeholder {
+  color: var(--c-text-dim);
+  opacity: 0.7;
+}
+
+.panel__error {
+  color: var(--c-error);
+  font-size: var(--fs-sm);
+}
+
+.panel__error[hidden] {
+  display: none;
+}
+
+.panel__action {
+  justify-self: stretch;
+  background: var(--c-accent);
+  border-color: transparent;
+  color: var(--c-accent-ink);
+  font-weight: var(--fw-semi);
+  cursor: pointer;
+}
+
+.panel__action:hover {
+  background: color-mix(in srgb, var(--c-accent) 86%, #ffffff);
+}
+
+.panel__empty {
+  color: var(--c-text-dim);
+  font-size: var(--fs-sm);
+}
+
+/* ── Listes de tableaux et de chemins ─────────────────────────────────────── */
+
+.panel__list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.panel__item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding-block: var(--sp-2);
+  border-bottom: 1px solid var(--c-line);
+}
+
+.panel__item:last-child {
+  border-bottom: 0;
+}
+
+.panel__load {
+  flex: 1;
+  min-width: 0;
+  min-height: var(--hit-min);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: 0;
+  background: none;
+  border: 0;
+  border-radius: var(--r-sm);
+  color: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.panel__load:hover .panel__item-name {
+  color: var(--c-accent);
+}
+
+.panel__thumb {
+  --thumb-unit: 18px;
+  width: 56px;
+  height: 56px;
+  flex: 0 0 auto;
+  position: relative;
+  background: var(--c-bg);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+
+.panel__item-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: color var(--d-fast) var(--e-out);
+}
+
+.panel__item-date {
+  flex: 0 0 auto;
+  color: var(--c-text-dim);
+  font-size: var(--fs-sm);
+}
+
+.panel__delete {
+  flex: 0 0 auto;
+  width: var(--hit-min);
+  height: var(--hit-min);
+  display: grid;
+  place-items: center;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--r-full);
+  color: var(--c-text-dim);
+  cursor: pointer;
+  transition: color var(--d-fast) var(--e-out),
+              border-color var(--d-fast) var(--e-out);
+}
+
+.panel__delete:hover {
+  color: var(--c-error);
+  border-color: var(--c-error);
+}
+
+/* Stickers d'une miniature : à leur place sur le tableau, en tout petit. */
+.thumb__sticker {
+  position: absolute;
+  width: calc(var(--thumb-unit, 18px) * var(--scale, 1));
+  transform: translate(-50%, -50%) scaleX(var(--flip, 1));
+  pointer-events: none;
+}
+
+/* ── Accueil : trois tableaux à remixer ───────────────────────────────────── */
+
+/* L'accueil occupe la cellule de la toile : absolu, il prend cette cellule
+   pour bloc conteneur et se cale exactement sur elle. */
+.examples {
+  /* Les quatre lignes : sans fin explicite, une boîte absolue prend le bord du
+     conteneur de grille et déborderait sur la barre et le tiroir. */
+  grid-area: 1 / 1 / 2 / 2;
+  position: absolute;
+  inset: 0;
+  max-width: var(--canvas-w);
+  margin-inline: auto;
+  display: grid;
+  place-items: center;
+  padding: var(--gutter);
+  background: color-mix(in srgb, var(--c-bg) 82%, transparent);
+  backdrop-filter: blur(2px);
+  border-radius: var(--r-lg);
+  animation: panel-fade var(--d-fade) var(--e-out) backwards;
+}
+
+.examples[hidden] {
+  display: none;
+}
+
+.examples__inner {
+  display: grid;
+  gap: var(--sp-4);
+  justify-items: center;
+}
+
+.examples__lead {
+  max-width: 32ch;
+  text-align: center;
+  font-size: var(--fs-sm);
+  color: var(--c-text-dim);
+}
+
+.examples__list {
+  display: flex;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.examples__card {
+  display: grid;
+  gap: var(--sp-1);
+  justify-items: center;
+  background: none;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  cursor: pointer;
+}
+
+.examples__thumb {
+  --thumb-unit: 30px;
+  width: 88px;
+  height: 88px;
+  position: relative;
+  background: var(--c-surface);
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-md);
+  overflow: hidden;
+  transition: transform var(--d-fast) var(--e-spring),
+              border-color var(--d-fast) var(--e-out),
+              box-shadow var(--d-fast) var(--e-out);
+}
+
+.examples__card:hover .examples__thumb,
+.examples__card:focus-visible .examples__thumb {
+  transform: translateY(-3px);
+  border-color: var(--c-accent);
+  box-shadow: var(--sh-card);
+}
+
+.examples__name {
+  font-family: var(--ff-display);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semi);
+}
+
+.examples__blank {
+  color: var(--c-text-dim);
+  border-color: var(--c-line);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+
+.examples__blank:hover {
+  color: var(--c-text);
+  border-color: var(--c-line-strong);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .examples__card:hover .examples__thumb,
+  .examples__card:focus-visible .examples__thumb {
+    transform: none;
+  }
+}
+
+/* ── Mode liste (?mode=liste) ─────────────────────────────────────────────── */
+
+.list {
+  display: grid;
+  gap: var(--sp-3);
+}
+
+.list__group {
+  display: grid;
+  gap: var(--sp-2);
+}
+
+.list__title {
+  font-family: var(--ff-display);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semi);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-caps);
+  color: var(--c-text-dim);
+}
+
+.list__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.list__chip {
+  min-height: var(--hit-min);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding-inline: var(--sp-3);
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-full);
+  background: var(--c-surface);
+  color: var(--c-text);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  transition: border-color var(--d-fast) var(--e-out),
+              background-color var(--d-fast) var(--e-out);
+}
+
+.list__chip:hover {
+  border-color: var(--c-line-strong);
+}
+
+.list__emoji {
+  width: 20px;
+  height: 20px;
+  pointer-events: none;
+}
+
+.list__chip[aria-pressed="true"] {
+  border-color: var(--c-accent);
+  background: color-mix(in srgb, var(--c-accent) 14%, var(--c-surface));
+}
+
+.list__chip.is-important {
+  border-width: 2px;
+  font-weight: var(--fw-semi);
+}
+
+.list__chip.is-important .list__label::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: var(--sp-2);
+  border-radius: var(--r-full);
+  background: var(--c-accent);
+  vertical-align: middle;
+}
+
+/* ── Barre de scène et largeur de recherche ───────────────────────────────── */
+
+.stage-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.scope {
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-caps);
+  color: var(--c-text-dim);
+  margin-left: auto;
+}
+
+.scope[hidden] {
+  display: none;
+}
+
+/* ── Avis et toast ────────────────────────────────────────────────────────── */
+
+#notice {
+  animation: panel-fade var(--d-fade) var(--e-out) backwards;
+}
+
+#toast {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  max-width: calc(100vw - 2 * var(--gutter));
+  padding: var(--sp-1) var(--sp-2) var(--sp-1) var(--sp-4);
+  animation: toast-in var(--d-fade) var(--e-out) backwards;
+}
+
+#toast[hidden] {
+  display: none;
+}
+
+.toast__text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.toast__action {
+  flex: 0 0 auto;
+  min-height: var(--hit-min);
+  padding-inline: var(--sp-3);
+  background: none;
+  border: 1px solid var(--c-line-strong);
+  border-radius: var(--r-full);
+  color: var(--c-accent);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semi);
+  cursor: pointer;
+}
+
+.toast__action:hover {
+  background: var(--c-raised);
+}
+
+/* ── Mouvement ────────────────────────────────────────────────────────────── */
+
+@keyframes panel-fade {
+  from { opacity: 0; }
+}
+
+@keyframes panel-up {
+  from { opacity: 0; transform: translateY(16px); }
+}
+
+@keyframes panel-in {
+  from { opacity: 0; transform: scale(0.98); }
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translate(-50%, 8px); }
+}
+
+/* Mouvement réduit : les déplacements disparaissent, les fondus restent
+   (spec §6.1). --d-fade ne tombe jamais à zéro. */
+@media (prefers-reduced-motion: reduce) {
+  @keyframes panel-up {
+    from { opacity: 0; }
+  }
+
+  @keyframes panel-in {
+    from { opacity: 0; }
+  }
+
+  @keyframes toast-in {
+    from { opacity: 0; transform: translateX(-50%); }
+  }
+
+  .panel__body {
+    animation-duration: var(--d-fade);
+  }
+}
+
+/* ── Ordinateur ───────────────────────────────────────────────────────────── */
+
+@media (min-width: 900px) {
+  .panel {
+    place-items: center;
+  }
+
+  .panel__body {
+    max-width: 480px;
+    border-radius: var(--r-lg);
+    animation-name: panel-in;
+  }
+
+  /* La toile est deux fois plus grande qu'au téléphone : l'accueil suit. */
+  .examples__thumb {
+    --thumb-unit: 38px;
+    width: 112px;
+    height: 112px;
+  }
+
+  .examples__lead,
+  .examples__name {
+    font-size: var(--fs-md);
+  }
+}
