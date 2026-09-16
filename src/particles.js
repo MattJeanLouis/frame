@@ -27,6 +27,7 @@ export function createParticles(canvasEl, { reducedMotion } = {}) {
 
   let weights = {};          // type -> poids cumulé des atmosphères posées
   let counts = {};           // type -> nombre de particules vivantes
+  let planKey = '';          // signature du dernier budget appliqué
   let particles = [];
   let viewW = 0, viewH = 0;  // taille de la toile en px CSS
   let rafId = 0;
@@ -36,7 +37,22 @@ export function createParticles(canvasEl, { reducedMotion } = {}) {
   /** Plan d'atmosphère : `{ rain: 0.28, embers: 0.3 }`. Objet vide = plus rien. */
   function setPlan(plan) {
     weights = plan || {};
-    applyCounts(budget());
+    sync();
+  }
+
+  /**
+   * La toile repasse son plan à chaque rendu, donc à chaque mouvement de doigt.
+   * Tant que le budget et le réglage de mouvement ne changent pas, il n'y a rien
+   * à faire : sans ce garde-fou, l'image fixe du mode « mouvement réduit » serait
+   * redessinée à chaque geste.
+   */
+  function sync() {
+    const target = budget();
+    const key = (still() ? 'fixe|' : 'anime|') +
+      Object.keys(target).map(type => type + ':' + target[type]).join(',');
+    if (key === planKey) return;
+    planKey = key;
+    applyCounts(target);
     schedule();
   }
 
@@ -52,8 +68,8 @@ export function createParticles(canvasEl, { reducedMotion } = {}) {
     if (ctx) ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     particles = [];                            // les positions dépendent de la taille
     counts = {};
-    applyCounts(budget());
-    schedule();
+    planKey = '';                              // le champ est à refaire, clé ou pas
+    sync();
   }
 
   function destroy() {
