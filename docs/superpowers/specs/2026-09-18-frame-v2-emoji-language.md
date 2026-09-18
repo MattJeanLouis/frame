@@ -198,17 +198,57 @@ le mode liste, l'accueil par exemples, `src/canvas.js`, `src/list.js`,
 `movieKeywords(id)` et `movieVideos(id)`, avec cache mémoire, et le même soin que
 le reste.
 
-## 13. Questions ouvertes
+## 13. Les trois présentations (tranché le 18 septembre 2026)
 
-- **Le mur ou le fil ?** Matt a évoqué un défilement vertical façon TikTok. Le
-  mur donne de l'organisation, le fil donne de la découverte. Le prototype
-  explore le mur et l'entrée par un moment ; l'arbitrage reste à faire.
+Matt a demandé « une perspective YouTube » : un mode film, un mode YouTube, un
+mode TikTok. Mesuré, puis tranché.
+
+**YouTube est encadrable et propre.** `youtube.com/embed/<clé>` répond 200 sans
+`frame-ancestors`. Avec `autoplay=1&mute=1&controls=0`, le chrome de Google
+disparaît, et TMDB nous donne des milliers de vraies clés.
+
+**TikTok s'encadre aussi** — `tiktok.com/embed/v2/<id>` répond 200 sans
+`frame-ancestors`, et son oEmbed fonctionne même sans clé. Mais trois murs :
+
+1. une **muraille de consentement aux cookies** qui exige un clic, incompatible
+   avec la couche par dessus (qui neutralise l'iframe) ; la rogner reviendrait à
+   dissimuler un consentement obligatoire ;
+2. TikTok affiche **ses propres compteurs** — likes, commentaires — donc des
+   chiffres, ce que l'anti-référence interdit ;
+3. **aucune découverte libre** : l'oEmbed exige une URL qu'on a déjà, il n'y a
+   pas d'API de recherche.
+
+**Décision : TikTok est écarté comme source, repris comme format.** Une seule
+matière, les vidéos TMDB, et trois présentations :
+
+| Mode | Forme | Matière |
+|---|---|---|
+| **Film** | mur d'affiches, défilement vertical | affiches |
+| **Vidéo** | défilement horizontal à point d'accroche | bandes-annonces, teasers, extraits |
+| **Vertical** | plein écran, une carte par écran | les mêmes moments |
+
+La langue emoji et les réactions sont identiques dans les trois : changer de
+présentation ne change jamais ce qu'on a dit d'un film.
+
+Deux règles techniques que la vérification a imposées :
+
+- **un lecteur par carte visible.** Quinze vidéos qui jouent ensemble vident la
+  batterie et font ramer le défilement : l'iframe ne reçoit son adresse qu'en
+  approchant du cadre, et la perd en s'éloignant. L'affiche reste dessous.
+- **réagir ne relance jamais le moment.** Les morceaux concernés sont remplacés
+  sur place ; redessiner la fiche ou le fil rechargerait la vidéo en cours.
+
+**Les GIF de réaction.** Giphy répond 401 et Tenor 403 : les deux exigent une
+clé. Décision de Matt : des GIF **locaux curatés**, sans API — on reste à une
+seule clé dans le projet (TMDB). Reste à faire.
+
+## 14. Questions ouvertes
+
 - **Le geste « à voir ».** Un cycle à une touche suffit-il, ou faut-il un geste
-  directionnel (vers le haut / vers le bas) plus proche de l'habitude du
-  défilement ? À tester à la main.
-- **Les memes.** Matt a parlé des « memes du moment ». Aucune source libre ne
-  relie un meme à un film : ce serait de la curation manuelle ou une API tierce
-  (Giphy, Tenor) avec une clé et de la modération. Reporté, et à ne pas confondre
-  avec les réactions emoji, qui suffisent au concept.
+  directionnel, plus proche de l'habitude du défilement ? À tester à la main.
+- **Le vide du mode vidéo.** Une vidéo 16:9 sur un téléphone en portrait laisse
+  de la place au-dessus et au-dessous. Les réactions et les états la remplissent
+  en partie ; la question d'y montrer les *autres* moments du film reste ouverte.
 - **La musique du moment.** Le son fait beaucoup dans un fil vertical ; ici le
   moment est muet par choix. À réévaluer.
+- **Les GIF.** Où les ranger, combien, et comment les choisir sans API.
