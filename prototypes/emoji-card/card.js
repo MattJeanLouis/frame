@@ -19,8 +19,18 @@ const SEEN = '👁️';
 const WANT = '🎟️';
 const SIGNATURE_MAX = 4;
 const CHOICES = 12;
+const FEED_MAX = 24;
+
+/* Trois présentations, une seule matière et une seule langue. Changer de mode
+   ne change jamais ce que tu as dit d'un film. */
+const MODES = [
+  { id: 'film', emoji: '🖼️', label: 'Mur d\'affiches' },
+  { id: 'video', emoji: '🎬', label: 'Vidéos, à l\'horizontale' },
+  { id: 'reel', emoji: '📱', label: 'Moment plein écran, à la verticale' }
+];
 
 const el = id => document.getElementById(id);
+const appEl = el('app');
 const wallEl = el('wall');
 const cardEl_ = el('card');
 const mirrorEl = el('mirror');
@@ -30,8 +40,10 @@ const state = {
   credential: '',
   client: null,
   live: false,
+  mode: 'film',
   films: new Map(),
   wall: [],
+  items: [],
   picked: [],
   drawer: 'places',
   paletteOpen: false,
@@ -147,10 +159,45 @@ async function fetchExtras(film) {
 }
 
 /** Le moment : une bande-annonce d'abord, sinon un teaser, sinon un extrait. */
+function bestVideo(list) {
+  const videos = list || [];
+  const pick = type => videos.find(v => v.type === type && v.official) || videos.find(v => v.type === type);
+  return pick('Trailer') || pick('Teaser') || pick('Clip') || pick('Featurette') || null;
+}
+
 function momentOf(film) {
-  const list = film.videos || [];
-  const pick = type => list.find(v => v.type === type && v.official) || list.find(v => v.type === type);
-  return pick('Trailer') || pick('Teaser') || pick('Clip') || null;
+  return bestVideo(film.videos);
+}
+
+/** Quelques requêtes de front, jamais toutes à la fois. */
+async function mapLimit(items, limit, fn) {
+  const out = new Array(items.length);
+  let cursor = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (cursor < items.length) {
+      const at = cursor++;
+      out[at] = await fn(items[at], at);
+    }
+  });
+  await Promise.all(workers);
+  return out;
+}
+
+/** Les vidéos d'un film, demandées une seule fois. */
+async function fetchVideos(film) {
+  if (film.__videos) return film.videos || [];
+  film.__videos = true;
+  if (!state.live) {
+    film.videos = [];
+    return film.videos;
+  }
+  try {
+    const data = await api('/movie/' + film.id + '/videos');
+    film.videos = (data.results || []).filter(v => v.site === 'YouTube');
+  } catch {
+    film.videos = [];
+  }
+  return film.videos;
 }
 
 /** Affiche vivante : en boucle, muette, sans commandes — pas un lecteur. */
@@ -263,6 +310,218 @@ function renderWall() {
   wallEl.replaceChildren(...state.wall.map((id, i) => wallCard(state.films.get(id), i)));
 }
 
+/* ── Les trois présentations ──────────────────────────────────────────────── */
+
+function renderModes() {
+  const frag = document.createDocumentFragment();
+  for (const mode of MODES) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'mode-btn';
+    button.setAttribute('role', 'tab');
+    button.setAttribute('aria-selected', String(mode.id === state.mode));
+    button.setAttribute('aria-label', mode.label);
+    button.append(emojiImg(mode.emoji));
+    button.addEventListener('click', () => setMode(mode.id));
+    frag.append(button);
+  }
+  el('modes').replaceChildren(frag);
+}
+
+/** Changer de présentation ne change jamais ce que tu as dit d'un film. */
+function setMode(id) {
+  if (state.mode === id) return;
+  state.mode = id;
+  appEl.className = 'mode-' + id;
+  renderModes();
+  announce(MODES.find(m => m.id === id)?.label || '');
+  show();
+}
+
+/** Ce qu'on montre quand rien n'est cherché. */
+function show() {
+  if (state.picked.length) return search();
+  if (state.mode === 'film') return loadWall();
+  return loadFeed();
+}
+
+/** Le fil : les vraies vidéos TMDB, mises bout à bout. */
+async function loadFeed() {
+  renderFeedSkeleton();
+  const films = [];
+  try {
+    if (state.live) {
+      const data = await state.client.discover({
+        keywordIds: [], sortBy: 'popularity.desc', voteCountGte: 300, page: 1
+      });
+      films.push(...(data.results || []));
+    } else {
+      const all = Object.values(DEMO_POOLS).flatMap(p => p.popular);
+      films.push(...[...new Map(all.map(f => [f.id, f])).values()]);
+    }
+  } catch (error) {
+    announce('Les vidéos n\'ont pas pu être chargées : ' + error.message);
+  }
+  films.forEach(f => state.films.set(f.id, f));
+
+  const videos = await mapLimit(films, 6, film => fetchVideos(film));
+  const tout = films.map((film, i) => ({ film, video: bestVideo(videos[i]) }));
+  const avecMoment = tout.filter(x => x.video);
+  // Un film sur quatre n'a aucun moment : si la matière manque, on garde
+  // l'affiche plutôt que de montrer un fil vide.
+  state.items = (avecMoment.length >= 6 ? avecMoment : tout).slice(0, FEED_MAX);
+  renderFeed();
+}
+
+function renderFeedSkeleton() {
+  const frag = document.createDocumentFragment();
+  for (let i = 0; i < (state.mode === 'reel' ? 1 : 3); i++) {
+    const s = document.createElement('span');
+    s.className = 'reel reel--skeleton';
+    const stage = document.createElement('span');
+    stage.className = 'reel__stage';
+    s.append(stage);
+    frag.append(s);
+  }
+  wallEl.replaceChildren(frag);
+}
+
+/** Une carte du fil : le moment, ton nom dessus, et de quoi réagir dessous. */
+function reelCard({ film, video }, index) {
+  const signature = signatureOf(film);
+  const mark = state.marks[film.id];
+
+  const card = document.createElement('article');
+  card.className = 'reel';
+  card.dataset.id = String(film.id);
+
+  const stage = document.createElement('div');
+  stage.className = 'reel__stage';
+
+  if (film.poster_path) {
+    const still = document.createElement('img');
+    still.className = 'reel__still';
+    still.src = state.client.posterUrl(film.poster_path, 'w780');
+    still.alt = '';
+    still.loading = index < 3 ? 'eager' : 'lazy';
+    stage.append(still);
+  }
+
+  if (video) {
+    const frame = document.createElement('iframe');
+    // Pas d'adresse tout de suite : elle n'arrive qu'en approchant de l'écran.
+    frame.dataset.key = video.key;
+    frame.setAttribute('allow', 'autoplay; encrypted-media');
+    frame.setAttribute('tabindex', '-1');
+    frame.setAttribute('aria-hidden', 'true');
+    frame.addEventListener('load', () => {
+      // Retirer « src » déclenche aussi un load : sans ce garde-fou, une carte
+      // libérée se croirait vivante et afficherait un cadre vide.
+      if (frame.getAttribute('src')) frame.classList.add('is-live');
+    });
+    stage.append(frame);
+  }
+
+  const veil = document.createElement('span');
+  veil.className = 'reel__veil';
+  stage.append(veil);
+
+  const sig = document.createElement('div');
+  sig.className = 'reel__sig';
+  for (const id of signature) {
+    const sticker = STICKER_BY_ID.get(id);
+    if (sticker) sig.append(emojiImg(sticker.emoji));
+  }
+  stage.append(sig);
+
+  if (mark) {
+    const badge = document.createElement('span');
+    badge.className = 'reel__state';
+    badge.append(emojiImg(mark === 'seen' ? SEEN : WANT));
+    stage.append(badge);
+  }
+
+  // Toucher l'image ouvre la fiche ; réagir reste possible sans quitter le fil.
+  const open = document.createElement('button');
+  open.type = 'button';
+  open.className = 'reel__open';
+  open.setAttribute('aria-label', film.title + '. Ouvrir la fiche.');
+  open.addEventListener('click', () => openCard(film.id));
+  stage.append(open);
+
+  card.append(stage);
+
+  const react = document.createElement('div');
+  react.className = 'reel__react';
+  const offerts = byGenres(film).slice(0, state.mode === 'reel' ? 5 : 8);
+  for (const sticker of offerts) {
+    react.append(reactionButton(film, sticker, signature, signature.includes(sticker.id)));
+  }
+  card.append(react);
+
+  // Dans le fil horizontal, on marque le film sans ouvrir la fiche.
+  if (state.mode === 'video') {
+    const marks = document.createElement('div');
+    marks.className = 'reel__marks';
+    for (const [value, emoji, label] of [['seen', SEEN, 'Vu'], ['want', WANT, 'À voir']]) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'state state--sm';
+      button.dataset.value = value;
+      button.setAttribute('aria-pressed', String(mark === value));
+      button.setAttribute('aria-label', label);
+      button.append(emojiImg(emoji));
+      button.addEventListener('click', () => {
+        if (state.marks[film.id] === value) delete state.marks[film.id];
+        else state.marks[film.id] = value;
+        saveStore();
+        announce(label + (state.marks[film.id] === value ? ' activé.' : ' désactivé.'));
+        refresh(film);
+      });
+      marks.append(button);
+    }
+    card.append(marks);
+  }
+
+  return card;
+}
+
+/**
+ * Un lecteur par carte visible, pas quinze.
+ * Quinze vidéos qui jouent ensemble vident la batterie et font ramer le
+ * défilement. L'iframe ne reçoit son adresse qu'en approchant, et la perd en
+ * s'éloignant — l'affiche reste dessous, donc rien ne clignote.
+ */
+const momentObserver = new IntersectionObserver(entries => {
+  for (const entry of entries) {
+    const frame = entry.target.querySelector('iframe[data-key]');
+    if (!frame) continue;
+    if (entry.isIntersecting) {
+      if (!frame.getAttribute('src')) frame.src = momentUrl(frame.dataset.key);
+    } else if (frame.getAttribute('src')) {
+      frame.removeAttribute('src');
+      frame.classList.remove('is-live');
+    }
+  }
+}, { root: wallEl, rootMargin: '400px 400px' });
+
+function observeMoments() {
+  momentObserver.disconnect();
+  for (const card of wallEl.querySelectorAll('.reel')) momentObserver.observe(card);
+}
+
+function renderFeed() {
+  if (!state.items.length) {
+    const empty = document.createElement('p');
+    empty.className = 'sr-only';
+    empty.textContent = 'Aucune vidéo.';
+    wallEl.replaceChildren(empty);
+    return;
+  }
+  wallEl.replaceChildren(...state.items.map((item, i) => reelCard(item, i)));
+  observeMoments();
+}
+
 async function loadWall() {
   renderSkeletons();
   try {
@@ -290,9 +549,12 @@ async function loadWall() {
 /** Chercher : la palette interroge TMDB et le moteur choisit six films. */
 async function search() {
   const placed = state.picked.map(id => ({ id, scale: 1 }));
-  if (!placed.length) return loadWall();
+  if (!placed.length) return show();
 
-  renderSkeletons(6);
+  const dansLeFil = state.mode !== 'film';
+  if (dansLeFil) renderFeedSkeleton();
+  else renderSkeletons(6);
+
   const pools = {};
   try {
     for (const id of state.picked) {
@@ -300,14 +562,21 @@ async function search() {
     }
     const seed = placed.map(p => p.id + ':1.00').join('|');
     const entries = selectMovies(placed, pools, [], seed);
-    entries.forEach(e => state.films.set(e.movie.id, e.movie));
-    state.wall = entries.map(e => e.movie.id);
-    announce(entries.length + ' films trouvés.');
+    const films = entries.map(e => e.movie);
+    films.forEach(f => state.films.set(f.id, f));
+    announce(films.length + ' films trouvés.');
+
+    if (dansLeFil) {
+      const videos = await mapLimit(films, 6, film => fetchVideos(film));
+      state.items = films.map((film, i) => ({ film, video: bestVideo(videos[i]) }));
+    } else {
+      state.wall = films.map(f => f.id);
+    }
   } catch (error) {
     announce('La recherche a échoué : ' + error.message);
-    state.wall = state.picked.length ? state.wall : [];
   }
-  renderWall();
+  if (dansLeFil) renderFeed();
+  else renderWall();
 }
 
 /* ── Le dock ──────────────────────────────────────────────────────────────── */
@@ -372,6 +641,7 @@ function reactionButton(film, sticker, signature, on) {
   const button = document.createElement('button');
   button.type = 'button';
   button.className = 'pick';
+  button.dataset.sticker = sticker.id;   // pour la mise à jour en place
   button.setAttribute('aria-pressed', String(on));
   button.setAttribute('aria-label',
     sticker.label + (on ? ', déjà dans la signature. Retirer.' : ', ajouter à la signature.'));
@@ -386,8 +656,7 @@ function reactionButton(film, sticker, signature, on) {
     if (at < 0) spark(event, sticker.emoji);
     announce(sticker.label + (at < 0 ? ' ajouté. ' : ' retiré. ') + 'Signature : ' +
       own.map(id => STICKER_BY_ID.get(id)?.label).filter(Boolean).join(', '));
-    renderCardView(film);
-    renderWall();
+    refresh(film);
   });
   return button;
 }
@@ -411,7 +680,10 @@ function buildCardPalette(film, signature) {
     if (first) button.append(emojiImg(first.emoji));
     button.addEventListener('click', () => {
       state.drawer = drawer.id;
-      renderCardView(film);
+      // On remplace la seule zone concernée : le moment ne repart pas de zéro.
+      const host = cardEl_.querySelector('.react-host');
+      if (host) host.replaceWith(buildReactHost(film, signature));
+      else renderCardView(film);
     });
     tabs.append(button);
   }
@@ -439,6 +711,96 @@ async function openCard(id) {
     return;
   }
   renderCardView(film);
+}
+
+/** Une case de la signature : nue, grande. Un nom, pas un bouton de recherche. */
+function sigSlot(film, stickerId, index) {
+  const sticker = STICKER_BY_ID.get(stickerId);
+  if (!sticker) return null;
+  const slot = document.createElement('button');
+  slot.type = 'button';
+  slot.className = 'sig__slot';
+  slot.setAttribute('aria-label',
+    sticker.label + (index === 0 ? ', impression principale' : '') + '. Retirer de la signature.');
+  slot.append(emojiImg(sticker.emoji));
+  slot.addEventListener('click', event => {
+    state.reactions[film.id] = signatureOf(film).filter(x => x !== stickerId);
+    saveStore();
+    spark(event, sticker.emoji);
+    announce(sticker.label + ' retiré de la signature.');
+    refresh(film);
+  });
+  return slot;
+}
+
+function buildSigRow(film, signature) {
+  const sig = document.createElement('div');
+  sig.className = 'sig';
+  signature.forEach((stickerId, index) => {
+    const slot = sigSlot(film, stickerId, index);
+    if (slot) sig.append(slot);
+  });
+
+  const empty = document.createElement('button');
+  empty.type = 'button';
+  empty.className = 'sig__slot sig__slot--empty';
+  empty.setAttribute('aria-expanded', String(state.paletteOpen));
+  empty.setAttribute('aria-label', state.paletteOpen ? 'Refermer la palette' : 'Ajouter un sticker à la signature');
+  empty.addEventListener('click', () => {
+    state.paletteOpen = !state.paletteOpen;
+    renderCardView(film);
+  });
+  sig.append(empty);
+  return sig;
+}
+
+/**
+ * La matière du film — ou la palette entière si on l'a ouverte.
+ * La signature au-dessus est nue et grande : un nom. Ces tuiles-ci sont
+ * encadrées : de la matière disponible. Le contenant les distingue.
+ */
+function buildReactHost(film, signature) {
+  const host = document.createElement('div');
+  host.className = 'react-host';
+
+  if (state.paletteOpen) {
+    host.append(buildCardPalette(film, signature));
+    return host;
+  }
+
+  const palette = filmPalette(film).slice(0, CHOICES);
+  if (palette.length) {
+    const react = document.createElement('div');
+    react.className = 'react';
+    for (const sticker of palette) {
+      react.append(reactionButton(film, sticker, signature, signature.includes(sticker.id)));
+    }
+    host.append(react);
+  }
+  return host;
+}
+
+/** L'état, hors du corps : toujours au même endroit, toujours sous le pouce. */
+function buildFoot(film, mark) {
+  const foot = document.createElement('div');
+  foot.className = 'card-foot';
+  for (const [value, emoji, label] of [['seen', SEEN, 'Vu'], ['want', WANT, 'À voir']]) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'state';
+    button.setAttribute('aria-pressed', String(mark === value));
+    button.setAttribute('aria-label', label);
+    button.append(emojiImg(emoji));
+    button.addEventListener('click', () => {
+      if (state.marks[film.id] === value) delete state.marks[film.id];
+      else state.marks[film.id] = value;
+      saveStore();
+      announce(label + (state.marks[film.id] === value ? ' activé.' : ' désactivé.'));
+      refresh(film);
+    });
+    foot.append(button);
+  }
+  return foot;
 }
 
 function renderCardView(film) {
@@ -481,7 +843,7 @@ function renderCardView(film) {
   const back = document.createElement('button');
   back.type = 'button';
   back.className = 'back';
-  back.setAttribute('aria-label', 'Retour au mur');
+  back.setAttribute('aria-label', 'Retour');
   back.append(Object.assign(document.createElement('span'), { className: 'chev' }));
   back.addEventListener('click', closeCard);
   top.append(back);
@@ -491,103 +853,96 @@ function renderCardView(film) {
   /* Le corps. */
   const body = document.createElement('div');
   body.className = 'card-body';
-
-  /* Ta signature : le nom du film. Taper un emoji le retire. */
-  const sig = document.createElement('div');
-  sig.className = 'sig';
-  signature.forEach((stickerId, index) => {
-    const sticker = STICKER_BY_ID.get(stickerId);
-    if (!sticker) return;
-    const slot = document.createElement('button');
-    slot.type = 'button';
-    slot.className = 'sig__slot';
-    slot.setAttribute('aria-label',
-      sticker.label + (index === 0 ? ', impression principale' : '') + '. Retirer de la signature.');
-    slot.append(emojiImg(sticker.emoji));
-    slot.addEventListener('click', event => {
-      const own = signatureOf(film).filter(x => x !== stickerId);
-      state.reactions[film.id] = own;
-      saveStore();
-      spark(event, sticker.emoji);
-      announce(sticker.label + ' retiré de la signature.');
-      renderCardView(film);
-      renderWall();
-    });
-    sig.append(slot);
-  });
-
-  const empty = document.createElement('button');
-  empty.type = 'button';
-  empty.className = 'sig__slot sig__slot--empty';
-  empty.setAttribute('aria-expanded', String(state.paletteOpen));
-  empty.setAttribute('aria-label', state.paletteOpen ? 'Refermer la palette' : 'Ajouter un sticker à la signature');
-  empty.addEventListener('click', () => {
-    state.paletteOpen = !state.paletteOpen;
-    renderCardView(film);
-  });
-  sig.append(empty);
-  body.append(sig);
+  body.append(buildSigRow(film, signature));
 
   const rule = document.createElement('div');
   rule.className = 'rule';
-  body.append(rule);
-
-  if (state.paletteOpen) {
-    // La palette entière, dans la fiche : on y choisit ce que TMDB n'a pas vu.
-    body.append(buildCardPalette(film, signature));
-  } else {
-    /* La matière du film : ce qu'il propose, que ce soit déjà dans ton nom ou
-       non. La signature au-dessus est nue et grande — un nom ; ces tuiles-ci
-       sont encadrées — de la matière disponible. Le contenant les distingue. */
-    const palette = filmPalette(film).slice(0, CHOICES);
-    if (palette.length) {
-      const react = document.createElement('div');
-      react.className = 'react';
-      for (const sticker of palette) {
-        react.append(reactionButton(film, sticker, signature, signature.includes(sticker.id)));
-      }
-      body.append(react);
-    }
-  }
+  body.append(rule, buildReactHost(film, signature));
 
   const rule2 = document.createElement('div');
   rule2.className = 'rule';
   body.append(rule2);
 
-  frag.append(body);
-
-  /* L'état, hors du corps : toujours au même endroit, toujours sous le pouce. */
-  const foot = document.createElement('div');
-  foot.className = 'card-foot';
-  for (const [value, emoji, label] of [['seen', SEEN, 'Vu'], ['want', WANT, 'À voir']]) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'state';
-    button.setAttribute('aria-pressed', String(mark === value));
-    button.setAttribute('aria-label', label);
-    button.append(emojiImg(emoji));
-    button.addEventListener('click', () => {
-      if (state.marks[film.id] === value) delete state.marks[film.id];
-      else state.marks[film.id] = value;
-      saveStore();
-      announce(label + (state.marks[film.id] === value ? ' activé.' : ' désactivé.'));
-      renderCardView(film);
-      renderWall();
-    });
-    foot.append(button);
-  }
-  frag.append(foot);
+  frag.append(body, buildFoot(film, mark));
 
   cardEl_.replaceChildren(frag);
   cardEl_.hidden = false;
   back.focus();
 }
 
+/**
+ * Met à jour ce qui a changé, et rien d'autre.
+ *
+ * Redessiner la fiche relancerait le moment depuis le début à chaque emoji
+ * touché ; redessiner le fil rechargerait toutes ses vidéos. On remplace donc
+ * les morceaux concernés, sur place.
+ */
+function refresh(film) {
+  if (state.mode === 'film') renderWall();
+  else refreshReels(film);
+
+  if (cardEl_.hidden || current !== film) return;
+  const signature = signatureOf(film);
+  const mark = state.marks[film.id];
+
+  const sig = cardEl_.querySelector('.sig');
+  if (sig) sig.replaceWith(buildSigRow(film, signature));
+
+  const host = cardEl_.querySelector('.react-host');
+  if (host) host.replaceWith(buildReactHost(film, signature));
+
+  const foot = cardEl_.querySelector('.card-foot');
+  if (foot) foot.replaceWith(buildFoot(film, mark));
+}
+
+/** Dans le fil, on ne recharge pas les vidéos : on corrige les cartes visées. */
+function refreshReels(film) {
+  const signature = signatureOf(film);
+  const mark = state.marks[film.id];
+
+  for (const card of wallEl.querySelectorAll('.reel[data-id="' + film.id + '"]')) {
+    const sig = card.querySelector('.reel__sig');
+    if (sig) {
+      sig.replaceChildren(...signature
+        .map(id => STICKER_BY_ID.get(id))
+        .filter(Boolean)
+        .map(sticker => emojiImg(sticker.emoji)));
+    }
+
+    for (const pick of card.querySelectorAll('.reel__react .pick')) {
+      const on = signature.includes(pick.dataset.sticker);
+      pick.setAttribute('aria-pressed', String(on));
+      const sticker = STICKER_BY_ID.get(pick.dataset.sticker);
+      if (sticker) {
+        pick.setAttribute('aria-label',
+          sticker.label + (on ? ', déjà dans la signature. Retirer.' : ', ajouter à la signature.'));
+      }
+    }
+
+    const badge = card.querySelector('.reel__state');
+    if (mark && badge) badge.replaceChildren(emojiImg(mark === 'seen' ? SEEN : WANT));
+    else if (mark) {
+      const fresh = document.createElement('span');
+      fresh.className = 'reel__state';
+      fresh.append(emojiImg(mark === 'seen' ? SEEN : WANT));
+      card.querySelector('.reel__stage')?.append(fresh);
+    } else if (badge) {
+      badge.remove();
+    }
+
+    for (const button of card.querySelectorAll('.reel__marks .state')) {
+      button.setAttribute('aria-pressed', String(mark === button.dataset.value));
+    }
+  }
+}
+
 function closeCard() {
+  const film = current;
   cardEl_.hidden = true;
   cardEl_.replaceChildren();
   current = null;
-  renderWall();
+  // L'état a pu changer dans la fiche : on remet la présentation à jour.
+  if (film) refresh(film);
 }
 
 /* ── L'éclat : le retour immédiat, sans un mot ────────────────────────────── */
@@ -697,9 +1052,15 @@ function start() {
     else if (!cardEl_.hidden) closeCard();
   });
 
+  // Le mode peut venir de l'URL : un lien partage aussi une présentation.
+  const voulu = new URLSearchParams(location.search).get('mode');
+  state.mode = MODES.some(m => m.id === voulu) ? voulu : 'film';
+  appEl.className = 'mode-' + state.mode;
+
+  renderModes();
   renderDrawers();
   renderPalette();
-  loadWall();
+  show();
 }
 
 start();

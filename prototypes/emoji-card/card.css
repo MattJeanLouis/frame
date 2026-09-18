@@ -95,13 +95,18 @@ img { display: block; }
 
 /* ── Le mur ──────────────────────────────────────────────────────────────── */
 
+/* Le conteneur de présentation : c'est le mode qui décide de son agencement. */
 #wall {
   position: relative;
   z-index: 1;
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
   overscroll-behavior: contain;
+}
+
+/* Mode film — le mur d'affiches. */
+.mode-film #wall {
+  overflow-y: auto;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   /* Les rangées se règlent sur leur contenu : sans cela, dans un conteneur à
@@ -111,6 +116,28 @@ img { display: block; }
   padding: 4px 16px 20px;
   align-content: start;
 }
+
+/* Mode vidéo — un film après l'autre, on s'arrête sur ce qui accroche. */
+.mode-video #wall {
+  overflow-x: auto;
+  overflow-y: hidden;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 16px 14px;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+}
+.mode-video #wall::-webkit-scrollbar { display: none; }
+
+/* Mode vertical — plein écran, un moment à la fois, on descend. */
+.mode-reel #wall {
+  overflow-y: auto;
+  scroll-snap-type: y mandatory;
+  scrollbar-width: none;
+  padding: 0;
+}
+.mode-reel #wall::-webkit-scrollbar { display: none; }
 
 .card {
   position: relative;
@@ -650,6 +677,205 @@ img { display: block; }
   background: var(--c-bg);
 }
 #credit a { color: inherit; }
+
+/* ── Le sélecteur de présentation ────────────────────────────────────────── */
+
+#modes {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--c-surface);
+}
+
+.mode-btn {
+  display: grid;
+  place-items: center;
+  width: 42px; height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background var(--d-base) var(--e-out);
+}
+.mode-btn img { width: 21px; height: 21px; opacity: 0.4; transition: opacity var(--d-base) var(--e-out); }
+.mode-btn[aria-selected="true"] {
+  background: color-mix(in oklab, var(--c-accent) 20%, var(--c-raised));
+}
+.mode-btn[aria-selected="true"] img { opacity: 1; }
+
+/* ── Les cartes vidéo, communes aux deux modes ───────────────────────────── */
+
+.reel {
+  position: relative;
+  flex: 0 0 auto;
+  scroll-snap-align: center;
+}
+
+.reel__stage {
+  position: relative;
+  overflow: hidden;
+  border-radius: 4px;
+  background: var(--c-surface);
+}
+
+.reel__still {
+  position: absolute;
+  inset: 0;
+  width: 100%; height: 100%;
+  object-fit: cover;
+  object-position: center 30%;
+}
+
+/* Le chrome de YouTube tombe hors cadre : l'iframe est doublée et recentrée. */
+.reel__stage iframe {
+  position: absolute;
+  top: -50%; left: -50%;
+  width: 200%; height: 200%;
+  border: 0;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 900ms var(--e-out);
+}
+.reel__stage iframe.is-live { opacity: 1; }
+
+.reel__veil {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(125% 95% at 50% 42%, transparent 36%, rgba(11, 14, 20, 0.8)),
+    linear-gradient(transparent 42%, rgba(6, 8, 13, 0.92));
+}
+
+/* La signature : le nom du film, nu, par-dessus l'image. */
+.reel__sig {
+  position: absolute;
+  left: 12px; bottom: 10px;
+  display: flex;
+  gap: 5px;
+  pointer-events: none;
+}
+.reel__sig img { width: 30px; height: 30px; filter: drop-shadow(0 2px 7px rgba(0, 0, 0, 0.9)); }
+.reel__sig img:first-child { width: 36px; height: 36px; }
+
+.reel__state {
+  position: absolute;
+  top: 10px; right: 10px;
+  display: grid;
+  place-items: center;
+  width: 30px; height: 30px;
+  border-radius: 50%;
+  background: rgba(6, 8, 13, 0.72);
+  backdrop-filter: blur(3px);
+}
+.reel__state[hidden] { display: none; }
+.reel__state img { width: 17px; height: 17px; }
+
+.reel__react {
+  position: relative;
+  z-index: 2;          /* au-dessus de la cible « ouvrir la fiche » */
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.reel__react .pick { width: 44px; height: 44px; }
+.reel__react .pick img { width: 27px; height: 27px; }
+
+/* Toute l'image ouvre la fiche. Le bouton est invisible mais porte un libellé :
+   c'est une cible, pas une décoration. */
+.reel__open {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* La zone de réactions de la fiche est stable : on peut la remplacer sans
+   toucher au moment qui joue au-dessus d'elle. */
+.react-host { display: block; }
+
+.reel--skeleton { background: var(--c-surface); }
+.reel--skeleton .reel__stage { overflow: hidden; }
+.reel--skeleton .reel__stage::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 20%, rgba(242, 238, 230, 0.05) 50%, transparent 80%);
+  animation: sweep 1.4s var(--e-in-out) infinite;
+}
+.mode-video .reel--skeleton { width: 84vw; max-width: 460px; }
+.mode-video .reel--skeleton .reel__stage { aspect-ratio: 16 / 9; }
+.mode-reel .reel--skeleton { width: 100%; height: 100%; }
+.mode-reel .reel--skeleton .reel__stage { position: absolute; inset: 0; }
+
+/* Mode vidéo : carte large, les réactions et l'état tiennent dessous. */
+.mode-video .reel { width: 92vw; max-width: 480px; }
+.mode-video .reel__stage { aspect-ratio: 16 / 9; }
+.mode-video .reel__react { margin-top: 10px; }
+.mode-video .reel__react .pick { width: 48px; height: 48px; }
+.mode-video .reel__react .pick img { width: 30px; height: 30px; }
+
+/* Mode vertical : plein écran, et les réactions remontent sur le bord droit
+   comme une barre d'actions — sauf que les nôtres sont des emoji, pas des
+   chiffres. */
+.mode-reel .reel {
+  width: 100%;
+  height: 100%;
+  scroll-snap-align: start;
+}
+.mode-reel .reel__stage {
+  position: absolute;
+  inset: 0;
+  border-radius: 0;
+}
+.mode-reel .reel__still { object-position: center 35%; }
+
+/* Une vidéo 16:9 ne remplit pas un cadre portrait avec un simple doublement :
+   le lecteur letterboxe, et il resterait des bandes noires. À 400 % et
+   recentrée de 150 %, la bande vidéo couvre tout le cadre tant que celui-ci
+   reste moins haut que 2,25 fois sa largeur — vrai sur tous les téléphones. */
+.mode-reel .reel__stage iframe {
+  top: -150%;
+  left: -150%;
+  width: 400%;
+  height: 400%;
+}
+
+/* Vu / à voir, dans le fil : on marque sans ouvrir la fiche. */
+.reel__marks {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+.state--sm {
+  width: 46px;
+  height: 46px;
+  border-radius: 11px;
+}
+.state--sm img { width: 24px; height: 24px; }
+.mode-reel .reel__sig { left: 16px; bottom: 92px; }
+.mode-reel .reel__sig img { width: 32px; height: 32px; }
+.mode-reel .reel__sig img:first-child { width: 40px; height: 40px; }
+.mode-reel .reel__react {
+  position: absolute;
+  right: 10px;
+  bottom: 92px;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  gap: 6px;
+}
+.mode-reel .reel__veil {
+  background:
+    radial-gradient(130% 90% at 50% 38%, transparent 30%, rgba(11, 14, 20, 0.7)),
+    linear-gradient(transparent 28%, rgba(6, 8, 13, 0.86) 70%, var(--c-bg));
+}
 
 @media (prefers-reduced-motion: reduce) {
   .card { animation: none; opacity: 1; transform: none; }
