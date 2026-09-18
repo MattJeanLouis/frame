@@ -29,6 +29,28 @@ const MODES = [
   { id: 'reel', emoji: '📱', label: 'Moment plein écran, à la verticale' }
 ];
 
+/* Quatre partis pris typographiques, comme les cartons d'une bande-annonce.
+   Le commentaire est du texte d'auteur, pas du texte d'interface : l'interface
+   reste en emoji, et ce que TU écris est monté. */
+const PRESETS = [
+  { id: 'carton', label: 'Carton plein écran', aa: 'Aa' },
+  { id: 'critique', label: 'Citation de presse', aa: 'Aa' },
+  { id: 'filets', label: 'Carton à filets', aa: 'ABC' },
+  { id: 'generique', label: 'Carton de fin', aa: 'ABC' }
+];
+const COMMENT_MAX = 120;
+
+/**
+ * La taille du texte s'ajuste à sa longueur : un carton de bande-annonce fait
+ * toujours tenir ce qu'il dit. Plus la phrase est longue, plus elle est petite.
+ */
+function fitFor(text) {
+  const n = (text || '').length;
+  if (n <= 42) return 1;
+  if (n <= 78) return 0.78;
+  return 0.6;
+}
+
 const el = id => document.getElementById(id);
 const appEl = el('app');
 const wallEl = el('wall');
@@ -47,8 +69,11 @@ const state = {
   picked: [],
   drawer: 'places',
   paletteOpen: false,
+  composing: false,
+  preset: 'carton',
   reactions: {},
-  marks: {}
+  marks: {},
+  comments: {}
 };
 
 /* ── Persistance ──────────────────────────────────────────────────────────── */
@@ -60,12 +85,17 @@ function loadStore() {
     const parsed = JSON.parse(raw);
     state.reactions = parsed.reactions && typeof parsed.reactions === 'object' ? parsed.reactions : {};
     state.marks = parsed.marks && typeof parsed.marks === 'object' ? parsed.marks : {};
+    state.comments = parsed.comments && typeof parsed.comments === 'object' ? parsed.comments : {};
   } catch { /* sans localStorage, on perd seulement la persistance */ }
 }
 
 function saveStore() {
   try {
-    localStorage.setItem(STORE_KEY, JSON.stringify({ reactions: state.reactions, marks: state.marks }));
+    localStorage.setItem(STORE_KEY, JSON.stringify({
+      reactions: state.reactions,
+      marks: state.marks,
+      comments: state.comments
+    }));
   } catch { /* idem */ }
 }
 
@@ -369,7 +399,7 @@ async function loadFeed() {
   const avecMoment = tout.filter(x => x.video);
   // Un film sur quatre n'a aucun moment : si la matière manque, on garde
   // l'affiche plutôt que de montrer un fil vide.
-  state.items = (avecMoment.length >= 6 ? avecMoment : tout).slice(0, FEED_MAX);
+  state.items = interleave((avecMoment.length >= 6 ? avecMoment : tout).slice(0, FEED_MAX));
   renderFeed();
 }
 
@@ -386,8 +416,40 @@ function renderFeedSkeleton() {
   wallEl.replaceChildren(frag);
 }
 
+/**
+ * Dans le fil vertical, un commentaire est un battement entre deux moments —
+ * exactement la place d'une citation de presse dans une bande-annonce.
+ */
+function interleave(items) {
+  const out = [];
+  for (const item of items) {
+    if (state.mode === 'reel' && state.comments[item.film.id]?.text) {
+      out.push({ kind: 'comment', film: item.film });
+    }
+    out.push({ kind: 'moment', film: item.film, video: item.video });
+  }
+  return out;
+}
+
 /** Une carte du fil : le moment, ton nom dessus, et de quoi réagir dessous. */
-function reelCard({ film, video }, index) {
+function reelCard(item, index) {
+  // Le carton de commentaire : plein écran, sans image dessous.
+  if (item.kind === 'comment') {
+    const card = document.createElement('article');
+    card.className = 'reel reel--quote';
+    card.dataset.id = String(item.film.id);
+    card.append(quoteCard(item.film));
+
+    const open = document.createElement('button');
+    open.type = 'button';
+    open.className = 'reel__open';
+    open.setAttribute('aria-label', item.film.title + '. Ouvrir la fiche.');
+    open.addEventListener('click', () => openCard(item.film.id));
+    card.append(open);
+    return card;
+  }
+
+  const { film, video } = item;
   const signature = signatureOf(film);
   const mark = state.marks[film.id];
 
@@ -568,7 +630,7 @@ async function search() {
 
     if (dansLeFil) {
       const videos = await mapLimit(films, 6, film => fetchVideos(film));
-      state.items = films.map((film, i) => ({ film, video: bestVideo(videos[i]) }));
+      state.items = interleave(films.map((film, i) => ({ film, video: bestVideo(videos[i]) })));
     } else {
       state.wall = films.map(f => f.id);
     }
@@ -780,6 +842,163 @@ function buildReactHost(film, signature) {
   return host;
 }
 
+/**
+ * Le commentaire, monté comme un carton de bande-annonce.
+ * C'est du texte d'auteur : un lecteur d'écran le lit tel quel, et le libellé
+ * dit aussi par quoi il est signé.
+ */
+function quoteCard(film) {
+  const comment = state.comments[film.id] || {};
+  const preset = comment.preset || 'carton';
+  const signature = signatureOf(film);
+
+  const figure = document.createElement('figure');
+  figure.className = 'quote quote--' + preset;
+  figure.style.setProperty('--fit', String(fitFor(comment.text)));
+
+  const text = document.createElement('p');
+  text.className = 'quote__text';
+  text.textContent = comment.text || '';
+  figure.append(text);
+
+  // Le carton à filets a besoin de son second trait, sous le texte.
+  if (preset === 'filets') {
+    const rule = document.createElement('span');
+    rule.className = 'quote__rule';
+    figure.append(rule);
+  }
+
+  if (signature.length) {
+    const sig = document.createElement('div');
+    sig.className = 'quote__sig';
+    for (const id of signature) {
+      const sticker = STICKER_BY_ID.get(id);
+      if (sticker) sig.append(emojiImg(sticker.emoji));
+    }
+    figure.append(sig);
+  }
+
+  figure.setAttribute('aria-label',
+    (comment.text || '') + ' — signé ' +
+    signature.map(id => STICKER_BY_ID.get(id)?.label).filter(Boolean).join(', '));
+  return figure;
+}
+
+/** Écrire : le champ EST l'aperçu du carton qu'on est en train de monter. */
+function buildComposer(film) {
+  const wrap = document.createElement('div');
+  wrap.className = 'composer';
+
+  // Les présets montrent le rendu au lieu de le nommer : on voit ce qu'on prend.
+  const presets = document.createElement('div');
+  presets.className = 'presets';
+  for (const preset of PRESETS) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'preset';
+    button.setAttribute('aria-pressed', String(preset.id === state.preset));
+    button.setAttribute('aria-label', preset.label);
+    const aa = document.createElement('span');
+    aa.className = 'preset__aa preset__aa--' + preset.id;
+    aa.textContent = preset.aa;
+    button.append(aa);
+    button.addEventListener('click', () => {
+      state.preset = preset.id;
+      renderCardView(film);
+      // Changer de preset change le rendu : on rend le curseur à l'écriture.
+      const field = cardEl_.querySelector('.composer__input');
+      if (field) {
+        field.focus();
+        field.setSelectionRange(field.value.length, field.value.length);
+      }
+    });
+    presets.append(button);
+  }
+  wrap.append(presets);
+
+  const field = document.createElement('div');
+  field.className = 'composer__field quote quote--' + state.preset;
+
+  const input = document.createElement('textarea');
+  input.className = 'composer__input';
+  input.rows = 3;
+  input.maxLength = COMMENT_MAX;
+  input.value = state.comments[film.id]?.text || '';
+  input.placeholder = '✍️';
+  input.setAttribute('aria-label', 'Ton commentaire sur ' + film.title);
+  field.append(input);
+
+  // Le budget de signes, en forme : une barre qui se vide, jamais un chiffre.
+  const budget = document.createElement('div');
+  budget.className = 'composer__budget';
+  const bar = document.createElement('i');
+  budget.append(bar);
+  field.append(budget);
+
+  const scale = () => {
+    const n = input.value.length;
+    bar.style.transform = 'scaleX(' + Math.max(0, 1 - n / COMMENT_MAX) + ')';
+    // La taille suit la longueur et le champ grandit : rien n'est jamais coupé.
+    field.style.setProperty('--fit', String(fitFor(input.value)));
+    input.style.height = 'auto';
+    input.style.height = input.scrollHeight + 'px';
+  };
+  scale();
+
+  input.addEventListener('input', () => {
+    scale();
+    state.comments[film.id] = { text: input.value, preset: state.preset, at: Date.now() };
+    saveStore();
+  });
+
+  wrap.append(field);
+
+  const actions = document.createElement('div');
+  actions.className = 'composer__actions';
+  const done = document.createElement('button');
+  done.type = 'button';
+  done.className = 'state';
+  done.setAttribute('aria-label', 'Terminer');
+  done.append(emojiImg('✅'));
+  done.addEventListener('click', () => {
+    const value = input.value.trim();
+    if (value) state.comments[film.id] = { text: value, preset: state.preset, at: Date.now() };
+    else delete state.comments[film.id];
+    saveStore();
+    state.composing = false;
+    renderCardView(film);
+    updateBackground(film);
+    announce(value ? 'Commentaire enregistré.' : 'Commentaire effacé.');
+  });
+  actions.append(done);
+  wrap.append(actions);
+
+  return wrap;
+}
+
+/** Ce qui se montre à la place du commentaire : le carton, ou l'invitation. */
+function buildCommentSlot(film) {
+  const wrap = document.createElement('div');
+  wrap.className = 'comment-slot';
+
+  const comment = state.comments[film.id];
+  if (comment && comment.text) wrap.append(quoteCard(film));
+
+  const write = document.createElement('button');
+  write.type = 'button';
+  write.className = 'reel__write';
+  write.setAttribute('aria-label',
+    comment && comment.text ? 'Modifier ton commentaire' : 'Écrire un commentaire');
+  write.append(emojiImg('✍️'));
+  write.addEventListener('click', () => {
+    state.composing = true;
+    if (comment?.preset) state.preset = comment.preset;
+    renderCardView(film);
+  });
+  wrap.append(write);
+  return wrap;
+}
+
 /** L'état, hors du corps : toujours au même endroit, toujours sous le pouce. */
 function buildFoot(film, mark) {
   const foot = document.createElement('div');
@@ -804,6 +1023,10 @@ function buildFoot(film, mark) {
 }
 
 function renderCardView(film) {
+  // Écrire prend tout l'écran : on monte un carton, on ne le fait pas en
+  // passant. Le moment et les réactions reviennent ensuite.
+  if (state.composing) return renderComposer(film);
+
   const signature = signatureOf(film);
   const mark = state.marks[film.id];
   const moment = momentOf(film);
@@ -857,7 +1080,7 @@ function renderCardView(film) {
 
   const rule = document.createElement('div');
   rule.className = 'rule';
-  body.append(rule, buildReactHost(film, signature));
+  body.append(rule, buildCommentSlot(film), buildReactHost(film, signature));
 
   const rule2 = document.createElement('div');
   rule2.className = 'rule';
@@ -877,11 +1100,16 @@ function renderCardView(film) {
  * touché ; redessiner le fil rechargerait toutes ses vidéos. On remplace donc
  * les morceaux concernés, sur place.
  */
-function refresh(film) {
+function updateBackground(film) {
   if (state.mode === 'film') renderWall();
   else refreshReels(film);
+}
 
-  if (cardEl_.hidden || current !== film) return;
+function refresh(film) {
+  updateBackground(film);
+
+  // Pendant l'écriture, il n'y a ni signature ni réactions à l'écran.
+  if (cardEl_.hidden || current !== film || state.composing) return;
   const signature = signatureOf(film);
   const mark = state.marks[film.id];
 
@@ -890,6 +1118,9 @@ function refresh(film) {
 
   const host = cardEl_.querySelector('.react-host');
   if (host) host.replaceWith(buildReactHost(film, signature));
+
+  const slot = cardEl_.querySelector('.comment-slot');
+  if (slot) slot.replaceWith(buildCommentSlot(film));
 
   const foot = cardEl_.querySelector('.card-foot');
   if (foot) foot.replaceWith(buildFoot(film, mark));
@@ -933,6 +1164,40 @@ function refreshReels(film) {
     for (const button of card.querySelectorAll('.reel__marks .state')) {
       button.setAttribute('aria-pressed', String(mark === button.dataset.value));
     }
+  }
+}
+
+/** L'écran d'écriture : le carton au centre, rien autour. */
+function renderComposer(film) {
+  const frag = document.createDocumentFragment();
+
+  const top = document.createElement('div');
+  top.className = 'card-top card-top--thin';
+
+  const back = document.createElement('button');
+  back.type = 'button';
+  back.className = 'back';
+  back.setAttribute('aria-label', 'Laisser tomber');
+  back.append(Object.assign(document.createElement('span'), { className: 'chev' }));
+  back.addEventListener('click', () => {
+    state.composing = false;
+    renderCardView(film);
+  });
+  top.append(back);
+  frag.append(top);
+
+  const body = document.createElement('div');
+  body.className = 'card-body card-body--compose';
+  body.append(buildComposer(film));
+  frag.append(body);
+
+  cardEl_.replaceChildren(frag);
+  cardEl_.hidden = false;
+
+  const field = cardEl_.querySelector('.composer__input');
+  if (field) {
+    field.focus();
+    field.setSelectionRange(field.value.length, field.value.length);
   }
 }
 

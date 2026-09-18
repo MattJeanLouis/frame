@@ -242,7 +242,73 @@ Deux règles techniques que la vérification a imposées :
 clé. Décision de Matt : des GIF **locaux curatés**, sans API — on reste à une
 seule clé dans le projet (TMDB). Reste à faire.
 
-## 14. Questions ouvertes
+## 14. Le commentaire écrit, mis en scène (18 septembre 2026)
+
+Matt veut pouvoir écrire sur un film, mais « comme les emoji, très visuel : le
+texte mis en scène dans des présets de bande-annonce, en mode commentaires de
+critiques — sauf que ce sont les utilisateurs qui écrivent ».
+
+### La règle du zéro-texte, précisée et non contredite
+
+Le principe 3 disait : « zéro texte, sauf là où il est inévitable ». Il faut le
+lire précisément :
+
+- **le texte d'interface reste interdit** — un bouton, un état, une navigation
+  ne s'écrivent pas ; ils se montrent ;
+- **le texte d'auteur est mis en scène** — ce que Matt écrit n'est pas du
+  chrome, c'est une matière, et elle est montée.
+
+La distinction n'est pas une échappatoire : c'est celle entre ce que l'appareil
+dit et ce que la personne dit. Un carton de citation dans une bande-annonce
+n'est pas une étiquette, c'est un plan.
+
+### Quatre présets, quatre partis pris typographiques
+
+| Préset | Traitement | Capacité |
+|---|---|---|
+| **Carton plein écran** | Syne 800, capitales serrées, coupure franche | une punchline courte |
+| **Citation de presse** | Instrument Serif italique, entre guillemets français | la phrase qui juge |
+| **Carton à filets** | capitales espacées entre deux traits ambre | l'accroche |
+| **Carton de fin** | petites capitales très espacées, presque un souffle | le mot de la fin |
+
+**La typographie s'adapte à la longueur.** Un carton de bande-annonce fait
+toujours tenir ce qu'il dit : la taille est multipliée par un facteur qui
+décroît avec le nombre de signes. Sans cela, un texte long se faisait couper —
+défaut constaté à l'usage, et corrigé.
+
+**Le champ est l'aperçu.** On écrit dans le carton qu'on est en train de
+monter : le champ de saisie porte lui-même le style du préset choisi. Changer
+de préset rejoue l'animation sur son propre texte.
+
+**Écrire prend tout l'écran.** Le moment, la signature et les réactions
+s'effacent le temps de l'écriture : on monte un carton, on ne le fait pas en
+passant.
+
+### Le commentaire signé
+
+Le carton porte la **signature emoji** du film. Là où une citation de presse
+affiche le nom du journal, le commentaire affiche les emoji de Matt : les deux
+fonctionnalités parlent d'une seule voix, et le texte n'est jamais orphelin de
+son auteur.
+
+### Le battement dans le fil
+
+Dans le mode vertical, le commentaire devient **un carton entre deux moments** —
+exactement la place d'une citation de presse dans une bande-annonce. Le fil
+alterne donc : carton, moment, carton, moment. C'est le seul endroit où le texte
+apparaît sans avoir été demandé, et c'est précisément là qu'il fait sens.
+
+### Les contraintes
+
+- **120 signes**, et le budget se montre en **barre qui se vide**, jamais en
+  chiffres (principe 5).
+- **Aucun libellé de préset** : quatre pastilles montrent le rendu (`Aa`, `ABC`)
+  dans la police du préset. On voit ce qu'on prend.
+- Le texte est du vrai texte : un lecteur d'écran le lit, et le carton porte un
+  libellé qui dit aussi par quoi il est signé.
+- `prefers-reduced-motion` supprime les animations de carton.
+
+## 15. Questions ouvertes
 
 - **Le geste « à voir ».** Un cycle à une touche suffit-il, ou faut-il un geste
   directionnel, plus proche de l'habitude du défilement ? À tester à la main.

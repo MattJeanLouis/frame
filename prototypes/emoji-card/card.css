@@ -801,6 +801,42 @@ img { display: block; }
    toucher au moment qui joue au-dessus d'elle. */
 .react-host { display: block; }
 
+/* Le commentaire dans la fiche : le carton, et de quoi l'écrire. */
+.comment-slot {
+  display: grid;
+  gap: 10px;
+}
+
+/* Écrire, c'est un geste : un signe, pas un mot. */
+.reel__write {
+  justify-self: start;
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  padding: 0;
+  border: 1px dashed color-mix(in oklab, var(--c-text) 24%, transparent);
+  border-radius: 11px;
+  background: transparent;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.reel__write img { width: 24px; height: 24px; opacity: 0.75; }
+
+/* Dans le fil vertical, le carton prend tout l'écran. */
+.mode-reel .reel--quote {
+  width: 100%;
+  height: 100%;
+  scroll-snap-align: start;
+}
+.mode-reel .reel--quote .quote {
+  position: absolute;
+  inset: 0;
+  border-radius: 0;
+  min-height: 0;
+  padding: 44px 30px;
+}
+
 .reel--skeleton { background: var(--c-surface); }
 .reel--skeleton .reel__stage { overflow: hidden; }
 .reel--skeleton .reel__stage::after {
@@ -877,8 +913,238 @@ img { display: block; }
     linear-gradient(transparent 28%, rgba(6, 8, 13, 0.86) 70%, var(--c-bg));
 }
 
+/* ── Le commentaire, mis en scène ────────────────────────────────────────── *
+   Ce n'est pas du texte d'interface : c'est du texte d'auteur. L'interface
+   reste en emoji ; ce que TU écris est monté comme un carton de bande-annonce.
+   Quatre partis pris typographiques, quatre présets.                       */
+
+.quote {
+  position: relative;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: #070910;
+  border-radius: 4px;
+  padding: 26px 22px;
+  min-height: 190px;
+  isolation: isolate;
+  text-align: center;
+}
+
+/* Le grain de la pellicule : discret, mais il empêche l'aplat d'être mort. */
+.quote::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  opacity: 0.5;
+  background:
+    radial-gradient(120% 90% at 50% 0%, rgba(242, 181, 68, 0.07), transparent 62%),
+    radial-gradient(130% 110% at 50% 110%, rgba(28, 35, 51, 0.9), transparent 60%);
+}
+
+.quote__text {
+  margin: 0;
+  max-width: 22ch;
+  text-wrap: balance;
+}
+
+.quote__sig {
+  position: absolute;
+  left: 0; right: 0; bottom: 12px;
+  display: flex;
+  justify-content: center;
+  gap: 5px;
+}
+.quote__sig img { width: 19px; height: 19px; opacity: 0.85; }
+
+/* 1 — Le carton plein écran : Syne, capitales serrées, la coupe franche. */
+.quote--carton .quote__text,
+.quote--carton .composer__input {
+  font-family: var(--ff-display);
+  font-weight: 800;
+  font-size: calc(clamp(1.35rem, 7vw, 2rem) * var(--fit, 1));
+  line-height: 0.98;
+  letter-spacing: -0.015em;
+  text-transform: uppercase;
+  color: var(--c-text);
+  animation: cut 260ms var(--e-out) both;
+}
+@keyframes cut {
+  from { opacity: 0; transform: scale(1.05); }
+}
+
+/* 2 — La citation de presse : serif italique, entre guillemets français. */
+.quote--critique .quote__text,
+.quote--critique .composer__input {
+  font-family: "Instrument Serif", Georgia, serif;
+  font-style: italic;
+  font-weight: 400;
+  font-size: calc(clamp(1.45rem, 7.4vw, 2.1rem) * var(--fit, 1));
+  line-height: 1.16;
+  color: var(--c-text);
+  animation: rise 900ms var(--e-out) both;
+}
+.quote--critique .quote__text::before { content: "«\00a0"; }
+.quote--critique .quote__text::after { content: "\00a0»"; }
+@keyframes rise {
+  from { opacity: 0; transform: translateY(10px); }
+}
+
+/* 3 — Le carton à filets : capitales espacées entre deux traits. */
+.quote--filets .quote__text,
+.quote--filets .composer__input {
+  font-family: var(--ff-text);
+  font-weight: 600;
+  font-size: calc(clamp(0.95rem, 4.6vw, 1.2rem) * var(--fit, 1));
+  line-height: 1.4;
+  letter-spacing: 0.17em;
+  text-transform: uppercase;
+  color: var(--c-text);
+  animation: rise 620ms var(--e-out) 220ms both;
+}
+.quote--filets::after {
+  content: "";
+  position: absolute;
+  left: 14%;
+  right: 14%;
+  top: 26%;
+  height: 1px;
+  background: var(--c-accent);
+  opacity: 0.75;
+  transform-origin: center;
+  animation: draw 520ms var(--e-out) both;
+}
+.quote--filets .quote__text + .quote__rule {
+  position: absolute;
+  left: 14%;
+  right: 14%;
+  bottom: 30%;
+  height: 1px;
+  background: var(--c-accent);
+  opacity: 0.75;
+  transform-origin: center;
+  animation: draw 520ms var(--e-out) 120ms both;
+}
+@keyframes draw {
+  from { transform: scaleX(0); }
+}
+
+/* 4 — Le carton de fin : petites capitales très espacées, presque un souffle. */
+.quote--generique .quote__text,
+.quote--generique .composer__input {
+  font-family: var(--ff-text);
+  font-weight: 400;
+  font-size: calc(clamp(0.8rem, 3.9vw, 1rem) * var(--fit, 1));
+  line-height: 1.7;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--c-text-dim);
+  animation: rise 1400ms var(--e-out) both;
+}
+
+/* ── Le compositeur ──────────────────────────────────────────────────────── */
+
+/* L'écran d'écriture : la barre se réduit, le carton occupe le reste. */
+.card-top--thin {
+  height: 56px;
+  min-height: 0;
+  max-height: 56px;
+  background: var(--c-bg);
+}
+
+.card-body--compose {
+  margin-top: 0;
+  display: grid;
+  align-content: center;
+  padding: 0 16px 24px;
+  overflow: visible;
+}
+
+.composer { display: grid; gap: 14px; }
+
+/* Quatre pastilles qui montrent le rendu plutôt que de le nommer : on voit
+   ce qu'on choisit. */
+.presets {
+  display: flex;
+  gap: 8px;
+}
+.preset {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  height: 54px;
+  padding: 0;
+  border: 1px solid var(--c-line);
+  border-radius: 8px;
+  background: #070910;
+  cursor: pointer;
+  overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
+  transition: border-color var(--d-base) var(--e-out);
+}
+.preset[aria-pressed="true"] { border-color: var(--c-accent); }
+.preset__aa {
+  font-size: 20px;
+  line-height: 1;
+  color: var(--c-text);
+  opacity: 0.55;
+  transition: opacity var(--d-base) var(--e-out);
+}
+.preset[aria-pressed="true"] .preset__aa { opacity: 1; }
+.preset__aa--carton { font-family: var(--ff-display); font-weight: 800; text-transform: uppercase; }
+.preset__aa--critique { font-family: "Instrument Serif", Georgia, serif; font-style: italic; }
+.preset__aa--filets { font-family: var(--ff-text); font-weight: 600; font-size: 13px; letter-spacing: 0.14em; }
+.preset__aa--generique { font-family: var(--ff-text); font-size: 11px; letter-spacing: 0.26em; }
+
+.composer__field {
+  position: relative;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #070910;
+}
+
+/* Le champ EST l'aperçu : on écrit dans le carton qu'on est en train de monter. */
+.composer__input {
+  display: block;
+  width: 100%;
+  min-height: 132px;
+  padding: 26px 22px;
+  border: 0;
+  outline: 0;
+  resize: none;
+  background: transparent;
+  color: var(--c-text);
+  text-align: center;
+  text-wrap: balance;
+}
+.composer__input::placeholder { color: var(--c-text-dim); opacity: 0.45; font-size: 26px; }
+.composer__input:focus-visible { outline: 2px solid var(--c-accent); outline-offset: -3px; }
+
+/* Le budget de signes, en forme : une barre qui se vide, jamais un chiffre. */
+.composer__budget {
+  height: 2px;
+  margin: 0 22px 16px;
+  background: var(--c-line);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.composer__budget i {
+  display: block;
+  height: 100%;
+  background: var(--c-accent);
+  transform-origin: left;
+  transition: transform var(--d-base) var(--e-out);
+}
+
+.composer__actions { display: flex; gap: 10px; align-items: center; }
+
 @media (prefers-reduced-motion: reduce) {
   .card { animation: none; opacity: 1; transform: none; }
   .card--skeleton::after { animation: none; }
   .spark { animation-duration: 1ms; }
+  .quote__text, .quote--filets::after, .quote--filets .quote__rule, .composer__budget i {
+    animation: none !important;
+    transition: none !important;
+  }
 }
