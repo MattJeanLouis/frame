@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="description" content="FRAME — prototype de la carte-film en emoji.">
+<title>FRAME — carte-film</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230B0E14'/%3E%3Crect x='7.5' y='7.5' width='17' height='17' rx='3' fill='none' stroke='%23F2B544' stroke-width='3'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="preconnect" href="https://image.tmdb.org" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=Instrument+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="../../styles/tokens.css">
+<link rel="stylesheet" href="card.css">
+<script src="../../config.local.js" onerror="window.FRAME_CONFIG = window.FRAME_CONFIG || {};"></script>
+</head>
+<body>
+
+<div id="app">
+  <!-- Le seul signe de marque : un cadre, pas un mot. -->
+  <header id="bar">
+    <span class="mark" aria-hidden="true"></span>
+    <button class="glyph" id="btn-mirror" type="button" aria-label="Ton miroir">
+      <img alt="" aria-hidden="true" data-emoji="🪞">
+    </button>
+  </header>
+
+  <!-- Le mur : les films, nommés par leur signature. Aucun titre visible. -->
+  <main id="wall" aria-label="Films"></main>
+
+  <!-- Le dock : les familles, puis les stickers. C'est le rôle « chercher ». -->
+  <footer id="dock">
+    <div id="drawers" role="tablist" aria-label="Familles de stickers"></div>
+    <div id="palette" role="group" aria-label="Stickers"></div>
+  </footer>
+
+  <!-- Le texte inévitable : l'attribution, et rien d'autre. -->
+  <p id="credit">
+    Données et images de films fournies par
+    <a href="https://www.themoviedb.org/" target="_blank" rel="noopener">TMDB</a>.
+    Ce produit utilise l'API TMDB mais n'est ni approuvé ni certifié par TMDB.
+    Emoji par <a href="https://github.com/jdecked/twemoji" target="_blank" rel="noopener">Twemoji</a>, CC-BY 4.0.
+  </p>
+</div>
+
+<!-- La carte-film en grand : le moment, ta signature, tes réactions, l'état. -->
+<section id="card" hidden aria-label="Fiche du film"></section>
+
+<!-- Le miroir : ce que tu ajoutes, ce que tu retires. Jamais de chiffres. -->
+<section id="mirror" hidden aria-label="Ton miroir"></section>
+
+<div id="status" role="status" class="sr-only"></div>
+
+<script type="module" src="card.js"></script>
+</body>
+</html>
