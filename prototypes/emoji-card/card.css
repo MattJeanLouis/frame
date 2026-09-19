@@ -396,13 +396,30 @@ img { display: block; }
 
 /* ── Le dock ─────────────────────────────────────────────────────────────── */
 
+/* Le dock n'est plus une barre permanente : il tombe de la barre de recherche.
+   C'est ce qui rend au mur les 150 px qu'il prenait sur un téléphone — et les
+   résultats se mettent à jour dessous, sans voile ni modale. */
 #dock {
-  position: sticky;
-  bottom: 0;
-  z-index: 30;
-  padding: 8px 0 4px;
-  background: linear-gradient(transparent, var(--c-bg) 26%, var(--c-bg));
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 16px;
+  right: 16px;
+  z-index: 45;
+  max-height: 56vh;
+  overflow-y: auto;
+  padding: 12px 0 14px;
+  border: 1px solid var(--c-line-strong);
+  border-radius: 14px;
+  background: var(--c-surface);
+  box-shadow: var(--sh-panel);
+  opacity: 0;
+  transform: translateY(-10px);
+  pointer-events: none;
+  transition: opacity 180ms var(--e-out), transform 180ms var(--e-out);
 }
+#app.has-picker #dock { opacity: 1; transform: none; pointer-events: auto; }
+
+
 
 #drawers {
   display: flex;
@@ -1219,7 +1236,7 @@ img { display: block; }
 
 #tools {
   position: relative;
-  z-index: 1;
+  z-index: 3;   /* au-dessus du mur, sinon le panneau tombe derrière */
   flex: 0 0 auto;
   display: grid;
   gap: 8px;
@@ -1282,6 +1299,27 @@ img { display: block; }
 .glyph--sm .cross { width: 11px; height: 11px; }
 .glyph--sm .cross::before, .glyph--sm .cross::after { height: 2px; margin-top: -1px; }
 
+/* Les emoji choisis vivent DANS la barre de recherche : une seule requête,
+   deux façons de l'écrire. */
+.query-chips {
+  display: flex;
+  gap: 3px;
+  flex: 0 0 auto;
+}
+.query-chip {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid color-mix(in oklab, var(--c-accent) 45%, transparent);
+  border-radius: 8px;
+  background: color-mix(in oklab, var(--c-accent) 15%, transparent);
+  cursor: pointer;
+}
+.query-chip img { width: 19px; height: 19px; }
+.query-chips:empty { display: none; }
+
 /* Les filtres : une rangée qui défile, jamais cachée. */
 #filters {
   display: flex;
@@ -1332,67 +1370,71 @@ img { display: block; }
   background: var(--c-line);
 }
 
-/* ── Le survol : tout ce qu'on sait, sans ouvrir ─────────────────────────── */
+/* ── Le survol : la couche sur l'image ───────────────────────────────────── *
+   Pas de volet à côté : l'image s'assombrit et l'information se pose dessus.
+   Le film reste sous les yeux pendant qu'on le lit.                        */
 
-#peek {
-  position: fixed;
-  z-index: 50;
-  width: 336px;
-  max-height: min(74vh, 640px);
+.card__peek {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: none;
+  flex-direction: column;
+  gap: 9px;
+  padding: 12px;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 16px;
-  border: 1px solid var(--c-line-strong);
-  border-radius: 12px;
-  background: var(--c-raised);
-  box-shadow: var(--sh-panel);
-  animation: peek-in 180ms var(--e-out);
+  /* L'image s'assombrit franchement : le texte doit tenir sans effort. */
+  background: rgba(6, 8, 13, 0.82);
+  backdrop-filter: blur(3px) saturate(1.15);
+  text-align: left;
+  animation: peek-in 200ms var(--e-out);
 }
-#peek[hidden] { display: none; }
+
+.card.is-peeking .card__peek { display: flex; }
+/* Le scrim du bas n'a plus lieu d'être quand la couche couvre tout. */
+.card.is-peeking .card__scrim,
+.card.is-peeking .card__foot,
+.card.is-peeking .card__state { opacity: 0; }
 
 @keyframes peek-in {
-  from { opacity: 0; transform: translateY(6px); }
+  from { opacity: 0; }
 }
 
-.peek__head {
-  display: grid;
-  grid-template-columns: 62px minmax(0, 1fr);
-  gap: 12px;
-  margin-bottom: 14px;
-}
-.peek__poster {
-  width: 62px;
-  aspect-ratio: 2 / 3;
-  object-fit: cover;
-  border-radius: 4px;
-  background: var(--c-surface);
-}
-.peek__sig { display: flex; flex-wrap: wrap; gap: 3px; margin-bottom: 6px; }
-.peek__sig img { width: 20px; height: 20px; }
-
-.peek .text__title { font-size: var(--fs-lg); }
-
-/* Le résumé est borné dans le survol : sans cela il pousse le casting et les
-   plateformes — ce qu'on vient chercher — sous la ligne de flottaison. */
-.peek .text__overview {
+.card__peek .text__title { font-size: var(--fs-md); }
+.card__peek .text__row { grid-template-columns: 74px minmax(0, 1fr); gap: 8px; }
+.card__peek .text__row { font-size: var(--fs-2xs); }
+.card__peek .text__label { font-size: 8.5px; letter-spacing: 0.1em; }
+.card__peek .text__value { font-size: var(--fs-2xs); }
+.card__peek .text__overview {
+  font-size: var(--fs-2xs);
+  line-height: 1.5;
   display: -webkit-box;
-  -webkit-line-clamp: 5;
+  -webkit-line-clamp: 6;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
-/* « RÉALISATION » ne se coupe pas : la colonne doit être assez large, sinon
-   l étiquette déborde sur sa valeur. */
-.peek .text__row { grid-template-columns: 104px minmax(0, 1fr); gap: 10px; }
-.peek__marks {
+.card__peek .text__meta { font-size: 8.5px; letter-spacing: 0.11em; }
+
+.peek__states {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px;
-  margin-top: 14px;
-  padding-top: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+  margin-top: auto;
+  padding-top: 10px;
   border-top: 1px solid var(--c-line);
 }
-.peek .mark { height: 34px; padding: 0 9px 0 7px; font-size: var(--fs-2xs); }
-.peek .mark img { width: 16px; height: 16px; }
+.peek__states .mark {
+  height: 30px;
+  padding: 0 7px 0 5px;
+  font-size: 9.5px;
+  justify-content: flex-start;
+}
+.peek__states .mark img { width: 14px; height: 14px; }
+
+/* Les états ne sont pas cliquables au survol : on ne clique pas à travers une
+   couche qu'on n'a pas ouverte. Ils informent, la fiche agit. */
+.card__peek .mark { pointer-events: none; }
 
 /* ── Écrans larges ───────────────────────────────────────────────────────── *
    Le prototype était pensé pour un téléphone ; à la souris il faut de la

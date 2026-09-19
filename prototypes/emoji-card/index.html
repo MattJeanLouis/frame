@@ -37,19 +37,22 @@
       <input id="search" type="search" autocomplete="off" spellcheck="false"
              aria-label="Rechercher un film ou une série"
              placeholder="Rechercher un film, une série…">
+      <div id="query-chips" class="query-chips"></div>
+      <button id="btn-emoji" class="glyph glyph--sm" type="button" aria-label="Chercher par emoji" aria-expanded="false"></button>
       <button id="search-clear" class="glyph glyph--sm" type="button" aria-label="Effacer la recherche" hidden></button>
     </div>
     <div id="filters" role="group" aria-label="Filtres"></div>
+
+    <!-- Le moteur par emoji tombe de la barre : une seule recherche, deux écritures. -->
+    <footer id="dock">
+      <div id="drawers" role="tablist" aria-label="Familles de stickers"></div>
+      <div id="palette" role="group" aria-label="Stickers"></div>
+    </footer>
   </div>
 
   <!-- Le mur : les films, nommés par leur signature. Aucun titre visible. -->
   <main id="wall" aria-label="Films"></main>
 
-  <!-- Le dock : les familles, puis les stickers. C'est le rôle « chercher ». -->
-  <footer id="dock">
-    <div id="drawers" role="tablist" aria-label="Familles de stickers"></div>
-    <div id="palette" role="group" aria-label="Stickers"></div>
-  </footer>
 
   <!-- Le texte inévitable : l'attribution, et rien d'autre. -->
   <p id="credit">
@@ -59,9 +62,6 @@
     Emoji par <a href="https://github.com/jdecked/twemoji" target="_blank" rel="noopener">Twemoji</a>, CC-BY 4.0.
   </p>
 </div>
-
-<!-- Le survol : tout ce qu'on sait du film, sans l'ouvrir. -->
-<aside id="peek" class="peek" hidden aria-hidden="true"></aside>
 
 <!-- La carte-film en grand : le moment, ta signature, tes réactions, l'état. -->
 <section id="card" hidden aria-label="Fiche du film"></section>

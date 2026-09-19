@@ -68,7 +68,6 @@ const wallEl = el('wall');
 const cardEl_ = el('card');
 const mirrorEl = el('mirror');
 const statusEl = el('status');
-const peekEl = el('peek');
 const progressEl = el('progress');
 const progressBar = progressEl.firstElementChild;
 
@@ -91,6 +90,10 @@ const state = {
   query: '',
   type: 'all',
   genres: [],
+  page: 1,
+  more: false,
+  loadingMore: false,
+  pageLoader: null,
   reactions: {},
   marks: {},
   comments: {}
@@ -218,12 +221,12 @@ function normalize(raw, kind) {
 }
 
 /** Le corpus : des films et des animés, entrelacés — ni un mur, ni l'autre. */
-async function discoverCorpus() {
+async function discoverCorpus(page = 1) {
   const [films, anime] = await Promise.all([
-    api('/discover/movie', { sort_by: 'popularity.desc', 'vote_count.gte': 300, page: 1 }),
+    api('/discover/movie', { sort_by: 'popularity.desc', 'vote_count.gte': 300, page }),
     api('/discover/tv', {
       with_genres: 16, with_original_language: 'ja',
-      sort_by: 'popularity.desc', 'vote_count.gte': 200, page: 1
+      sort_by: 'popularity.desc', 'vote_count.gte': 200, page
     })
   ]);
   const a = (films.results || []).map(f => normalize(f, 'movie'));
@@ -555,7 +558,12 @@ function wallCard(film, index) {
     card.append(badge);
   }
 
-  card.addEventListener('click', () => { closePeek(); openCard(film); });
+  // La couche de survol, posée sur l'affiche.
+  const layer = document.createElement('div');
+  layer.className = 'card__peek';
+  card.append(layer);
+
+  card.addEventListener('click', () => openCard(film));
   bindPeek(card, film);
   return card;
 }
@@ -594,6 +602,33 @@ function refreshWallCard(film) {
 
     card.setAttribute('aria-label', wallLabel(film, signature, mark));
   }
+}
+
+/** Ajoute des affiches à la suite : le mur ne se reconstruit pas, il s'allonge. */
+function appendWallCards(items) {
+  wallEl.querySelector('.wall-more')?.remove();
+  const depart = wallEl.children.length;
+  const frag = document.createDocumentFragment();
+  items.forEach((film, i) => frag.append(wallCard(film, depart + i)));
+  wallEl.append(frag);
+}
+
+/** Le bas du mur : on charge la suite, indéfiniment. */
+async function loadMore() {
+  if (state.loadingMore || !state.more || !state.pageLoader) return;
+  if (state.mode !== 'film') return;
+  state.loadingMore = true;
+  const more = document.createElement('span');
+  more.className = 'wall-more';
+  more.setAttribute('aria-hidden', 'true');
+  wallEl.append(more);
+  try {
+    await state.pageLoader(state.page + 1, { append: true });
+  } catch {
+    state.more = false;
+  }
+  wallEl.querySelector('.wall-more')?.remove();
+  state.loadingMore = false;
 }
 
 function renderWall() {
@@ -900,14 +935,28 @@ async function loadWall() {
   try {
     if (state.live) {
       // Films et animés, entrelacés.
-      const results = await discoverCorpus();
-      results.forEach(f => state.films.set(keyOf(f), f));
-      state.wall = results;
+      state.pageLoader = async (page, options) => {
+        const items = await discoverCorpus(page);
+        if (options?.append) {
+          items.forEach(f => state.films.set(keyOf(f), f));
+          state.wall.push(...items);
+          appendWallCards(items);
+          state.page = page;
+          state.more = items.length > 0 && page < 500;
+          return;
+        }
+        items.forEach(f => state.films.set(keyOf(f), f));
+        state.wall = items;
+        state.page = 1;
+        state.more = items.length > 0;
+      };
+      await state.pageLoader(1);
     } else {
       const ids = Object.values(DEMO_POOLS).flatMap(p => p.popular);
       const unique = [...new Map(ids.map(f => [f.id, f])).values()];
       unique.forEach(f => state.films.set(keyOf(f), f));
       state.wall = unique.map(f => normalize(f, 'movie'));
+      state.more = false;
     }
   } catch (error) {
     announce('Les films n\'ont pas pu être chargés : ' + error.message);
@@ -934,8 +983,12 @@ async function search() {
       pools[id] = await state.client.stickerPools(STICKER_BY_ID.get(id));
     }
     const seed = placed.map(p => p.id + ':1.00').join('|');
-    const entries = selectMovies(placed, pools, [], seed);
-    const films = entries.map(e => e.movie);
+    let films = selectMovies(placed, pools, [], seed).map(e => e.movie);
+
+    // Le texte et les emoji ne sont pas deux recherches : le texte affine.
+    const mot = state.query.trim().toLowerCase();
+    if (mot) films = films.filter(f => f.title.toLowerCase().includes(mot));
+
     films.forEach(f => state.films.set(keyOf(f), f));
     announce(films.length + ' films trouvés.');
 
@@ -1031,6 +1084,31 @@ function renderFilters() {
   el('filters').replaceChildren(frag);
 }
 
+/** Les emoji choisis, affichés DANS la barre : une seule requête, deux
+ *  écritures. C'est ce qui rend les deux moteurs cohérents. */
+function renderQueryChips() {
+  const host = el('query-chips');
+  const frag = document.createDocumentFragment();
+  for (const id of state.picked) {
+    const sticker = STICKER_BY_ID.get(id);
+    if (!sticker) continue;
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'query-chip';
+    chip.setAttribute('aria-label', sticker.label + '. Retirer de la recherche.');
+    chip.append(emojiImg(sticker.emoji));
+    chip.addEventListener('click', () => {
+      const at = state.picked.indexOf(id);
+      if (at >= 0) state.picked.splice(at, 1);
+      renderPalette();
+      renderQueryChips();
+      show();
+    });
+    frag.append(chip);
+  }
+  host.replaceChildren(frag);
+}
+
 /** Une frappe, un filtre : on attend un peu, puis on cherche une fois. */
 let filterTimer = 0;
 function scheduleFilter() {
@@ -1045,14 +1123,15 @@ const filtresActifs = () =>
  * La recherche. TMDB ne sait pas filtrer une recherche par texte : on filtre
  * donc nous-mêmes sur les genres que les résultats portent déjà.
  */
-async function runSearch() {
-  renderSkeletons(12);
+async function runSearch(page = 1, { append = false } = {}) {
+  if (!append) renderSkeletons(12);
+  state.pageLoader = runSearch;
   const q = state.query.trim();
   let trouves = [];
 
   try {
     if (q) {
-      const data = await api('/search/multi', { query: q, include_adult: false, page: 1 });
+      const data = await api('/search/multi', { query: q, include_adult: false, page });
       trouves = (data.results || [])
         .filter(r => r.media_type === 'movie' || r.media_type === 'tv')
         .map(r => normalize(r, r.media_type));
@@ -1062,7 +1141,7 @@ async function runSearch() {
         sort_by: 'popularity.desc',
         'vote_count.gte': 100,
         with_genres: state.genres.join(','),
-        page: 1
+        page
       }).catch(() => ({ results: [] }))));
       trouves = paquets.flatMap((paquet, i) => (paquet.results || []).map(r => normalize(r, kinds[i])));
       trouves.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
@@ -1079,9 +1158,17 @@ async function runSearch() {
   announce(trouves.length + (trouves.length > 1 ? ' résultats.' : ' résultat.'));
 
   if (state.mode === 'film') {
-    state.wall = trouves;
-    state.scroll.film = { top: 0, left: 0 };
-    renderWall();
+    trouves.forEach(f => state.films.set(keyOf(f), f));
+    if (append) {
+      state.wall.push(...trouves);
+      appendWallCards(trouves);
+    } else {
+      state.wall = trouves;
+      state.scroll.film = { top: 0, left: 0 };
+      renderWall();
+    }
+    state.page = page;
+    state.more = trouves.length > 0 && page < 500;
   } else {
     // Dans un fil, on ne garde que ce dont on peut montrer un moment.
     const courts = trouves.slice(0, 12);
@@ -1092,99 +1179,91 @@ async function runSearch() {
   }
 }
 
-/* ── Le survol : tout ce qu'on sait, sans ouvrir ─────────────────────────── */
+/* ── Le survol : la couche sur l'image ───────────────────────────────────── */
 
 const canHover = () => matchMedia('(hover: hover) and (pointer: fine)').matches;
 let peekTimer = 0;
-let peekFilm = null;
 
-function positionPeek(card) {
-  const r = card.getBoundingClientRect();
-  const w = peekEl.offsetWidth;
-  const h = peekEl.offsetHeight;
-  let x = r.right + 12;
-  if (x + w > innerWidth - 12) x = r.left - w - 12;
-  if (x < 12) x = Math.max(12, Math.min(r.left, innerWidth - w - 12));
-  let y = r.top;
-  if (y + h > innerHeight - 12) y = Math.max(12, innerHeight - h - 12);
-  peekEl.style.left = Math.round(x) + 'px';
-  peekEl.style.top = Math.round(y) + 'px';
-}
+/**
+ * Remplit la couche posée sur l'affiche. On remplit au fur et à mesure : ce
+ * qu'on sait déjà tout de suite, puis le détail quand il arrive — la couche ne
+ * clignote jamais.
+ */
+function fillPeek(card, film) {
+  const layer = card.querySelector('.card__peek');
+  if (!layer) return;
 
-function renderPeek(card, film) {
   const frag = document.createDocumentFragment();
-
-  const head = document.createElement('div');
-  head.className = 'peek__head';
-
-  if (film.poster_path) {
-    const poster = document.createElement('img');
-    poster.className = 'peek__poster';
-    poster.src = state.client.posterUrl(film.poster_path, 'w154');
-    poster.alt = '';
-    head.append(poster);
-  }
-
-  const side = document.createElement('div');
-  const sig = document.createElement('div');
-  sig.className = 'peek__sig';
-  for (const id of signatureOf(film)) {
-    const sticker = STICKER_BY_ID.get(id);
-    if (sticker) sig.append(emojiImg(sticker.emoji));
-  }
-  side.append(sig);
 
   const title = document.createElement('p');
   title.className = 'text__title';
   title.textContent = film.title;
-  side.append(title);
+  frag.append(title);
 
-  head.append(side);
-  frag.append(head);
+  const meta = document.createElement('p');
+  meta.className = 'text__meta';
+  meta.textContent = metaLine(film);
+  frag.append(meta);
 
-  // Le même bloc que la fiche, sans le titre : il est déjà dans l'en-tête.
-  frag.append(buildTextBlock(film, { sansTitre: true }));
+  if (film.overview) {
+    const overview = document.createElement('p');
+    overview.className = 'text__overview';
+    overview.textContent = film.overview;
+    frag.append(overview);
+  }
 
-  const marks = document.createElement('div');
-  marks.className = 'peek__marks';
+  for (const [label, value] of detailRows(film)) {
+    const row = document.createElement('div');
+    row.className = 'text__row';
+    const name = document.createElement('span');
+    name.className = 'text__label';
+    name.textContent = label;
+    const content = document.createElement('span');
+    content.className = 'text__value';
+    content.textContent = value;
+    row.append(name, content);
+    frag.append(row);
+  }
+
+  const states = document.createElement('div');
+  states.className = 'peek__states';
   for (const option of MARKS) {
-    marks.append(markChip(film, option, state.marks[keyOf(film)] === option.id, true));
+    states.append(markChip(film, option, state.marks[keyOf(film)] === option.id, true));
   }
-  frag.append(marks);
+  frag.append(states);
 
-  peekEl.replaceChildren(frag);
-  peekEl.hidden = false;
-  positionPeek(card);
-}
-
-async function openPeek(card, film) {
-  peekFilm = film;
-  renderPeek(card, film);
-  if (!film.__detail && state.live) {
-    await fetchDetail(film);
-    if (peekFilm === film) renderPeek(card, film);
-  }
-}
-
-function closePeek() {
-  peekFilm = null;
-  peekEl.hidden = true;
-  peekEl.replaceChildren();
+  layer.replaceChildren(frag);
 }
 
 /** Le survol n'existe qu'à la souris ; au doigt, c'est la fiche qui s'ouvre. */
 function bindPeek(card, film) {
   if (!canHover()) return;
+
+  let ouvert = false;
+  const fermer = () => {
+    clearTimeout(peekTimer);
+    ouvert = false;
+    card.classList.remove('is-peeking');
+  };
+
+  const ouvrir = async () => {
+    fillPeek(card, film);
+    ouvert = true;
+    card.classList.add('is-peeking');
+    if (film.__detail || !state.live) return;
+    await fetchDetail(film);
+    if (ouvert) fillPeek(card, film);
+  };
+
   card.addEventListener('pointerenter', () => {
     clearTimeout(peekTimer);
-    peekTimer = setTimeout(() => openPeek(card, film), 280);
+    // Un délai : on ne déploie pas une fiche en traversant la grille.
+    peekTimer = setTimeout(ouvrir, 240);
   });
-  card.addEventListener('pointerleave', () => {
-    clearTimeout(peekTimer);
-    if (peekFilm === film) closePeek();
-  });
-  card.addEventListener('focus', () => openPeek(card, film));
-  card.addEventListener('blur', () => { if (peekFilm === film) closePeek(); });
+  card.addEventListener('pointerleave', fermer);
+  card.addEventListener('focus', ouvrir);
+  card.addEventListener('blur', fermer);
+  card.addEventListener('keydown', event => { if (event.key === 'Escape') fermer(); });
 }
 
 /* ── Le dock ──────────────────────────────────────────────────────────────── */
@@ -1226,6 +1305,7 @@ function renderPalette() {
       if (at >= 0) state.picked.splice(at, 1);
       else state.picked.push(sticker.id);
       button.setAttribute('aria-pressed', String(at < 0));
+      renderQueryChips();
       announce(sticker.label + (at < 0 ? ' ajouté à la recherche.' : ' retiré de la recherche.'));
       scheduleSearch();
     });
@@ -1529,6 +1609,30 @@ function money(value) {
   }).format(value);
 }
 
+/** Les lignes de détail : le casting, la production, la note, les recettes, les
+ *  plateformes. La fiche et le survol montrent exactement les mêmes. */
+function detailRows(film) {
+  const rows = [];
+  if (film.director) rows.push([film.kind === 'tv' ? 'Création' : 'Réalisation', film.director]);
+  if (film.cast?.length) rows.push(['Avec', film.cast.join(', ')]);
+  if (film.companies?.length) rows.push(['Production', film.companies.slice(0, 2).join(', ')]);
+  if (film.countries?.length) rows.push(['Pays', film.countries.join(', ')]);
+  if (film.vote_count) {
+    rows.push(['Note', film.vote_average.toFixed(1) + ' / 10 sur ' +
+      new Intl.NumberFormat('fr-FR').format(film.vote_count) + ' votes']);
+  }
+  if (film.budget) rows.push(['Budget', money(film.budget)]);
+  if (film.revenue) rows.push(['Recettes', money(film.revenue)]);
+
+  // Une rubrique « où le voir » vide serait pire que pas de rubrique : on ne
+  // l'affiche que quand il y a quelque chose à dire, et sinon on dit la sortie.
+  if (film.providers?.length) rows.push(['Où le voir', film.providers.join(', ')]);
+  else if (film.date && new Date(film.date) > new Date()) {
+    rows.push(['Sortie', new Intl.DateTimeFormat('fr-FR', { dateStyle: 'long' }).format(new Date(film.date))]);
+  }
+  return rows;
+}
+
 /** La ligne technique : type, année, durée ou saisons, genres. La fiche et le
  *  survol doivent dire exactement la même chose, donc une seule source. */
 function metaLine(film) {
@@ -1577,26 +1681,7 @@ function buildTextBlock(film, { sansTitre = false } = {}) {
     wrap.append(overview);
   }
 
-  const rows = [];
-  if (film.director) rows.push([film.kind === 'tv' ? 'Création' : 'Réalisation', film.director]);
-  if (film.cast?.length) rows.push(['Avec', film.cast.join(', ')]);
-  if (film.companies?.length) rows.push(['Production', film.companies.slice(0, 2).join(', ')]);
-  if (film.countries?.length) rows.push(['Pays', film.countries.join(', ')]);
-  if (film.vote_count) {
-    rows.push(['Note', film.vote_average.toFixed(1) + ' / 10 sur ' +
-      new Intl.NumberFormat('fr-FR').format(film.vote_count) + ' votes']);
-  }
-  if (film.budget) rows.push(['Budget', money(film.budget)]);
-  if (film.revenue) rows.push(['Recettes', money(film.revenue)]);
-
-  // Une rubrique « où le voir » vide serait pire que pas de rubrique : on ne
-  // l'affiche que quand il y a quelque chose à dire, et sinon on dit la sortie.
-  if (film.providers?.length) rows.push(['Où le voir', film.providers.join(', ')]);
-  else if (film.date && new Date(film.date) > new Date()) {
-    rows.push(['Sortie', new Intl.DateTimeFormat('fr-FR', { dateStyle: 'long' }).format(new Date(film.date))]);
-  }
-
-  for (const [label, value] of rows) {
+  for (const [label, value] of detailRows(film)) {
     const row = document.createElement('div');
     row.className = 'text__row';
     const name = document.createElement('span');
@@ -1989,10 +2074,15 @@ function start() {
   state.client = state.live ? createClient({ credential: state.credential }) : createDemoClient();
 
   el('btn-mirror').addEventListener('click', openMirror);
-  wallEl.addEventListener('scroll', updateProgress, { passive: true });
+  wallEl.addEventListener('scroll', () => {
+    updateProgress();
+    // À 900 px du bas, on prépare la suite avant qu'on l'atteigne.
+    if (state.mode === 'film' && wallEl.scrollHeight - wallEl.scrollTop - wallEl.clientHeight < 900) {
+      loadMore();
+    }
+  }, { passive: true });
   document.addEventListener('keydown', event => {
     if (event.key === 'Escape') {
-      if (!peekEl.hidden) { closePeek(); return; }
       if (!mirrorEl.hidden) { closeMirror(); return; }
       if (!cardEl_.hidden) { closeCard(); return; }
       if (state.query) {
@@ -2018,6 +2108,7 @@ function start() {
   renderFilters();
   renderDrawers();
   renderPalette();
+  renderQueryChips();
 
   /* La recherche : une frappe, puis on cherche une fois. */
   const searchInput = el('search');
@@ -2025,6 +2116,18 @@ function start() {
   const cross = document.createElement('span');
   cross.className = 'cross';
   clearButton.append(cross);
+
+  /* Le moteur par emoji et le moteur texte sont le même : les emoji choisis
+     s'affichent dans la barre, à côté du texte. */
+  const emojiButton = el('btn-emoji');
+  const emojiIcon = emojiImg('😀');
+  emojiButton.append(emojiIcon);
+
+  emojiButton.addEventListener('click', () => {
+    const ouvert = appEl.classList.toggle('has-picker');
+    emojiButton.setAttribute('aria-expanded', String(ouvert));
+    if (ouvert) el('drawers').scrollIntoView({ block: 'nearest' });
+  });
 
   searchInput.addEventListener('input', () => {
     state.query = searchInput.value;
@@ -2038,8 +2141,6 @@ function start() {
     show();
     searchInput.focus();
   });
-  // Le survol disparaît dès qu'on fait défiler : il n'est plus ancré à rien.
-  wallEl.addEventListener('scroll', () => { if (peekFilm) closePeek(); }, { passive: true });
   show();
 }
 
