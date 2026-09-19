@@ -1442,6 +1442,26 @@ img { display: block; }
 }
 #filters::-webkit-scrollbar { display: none; }
 
+/* Les sous-genres : une seconde rangée, sous le genre choisi. Ils découpent
+   assez fin pour descendre dans le catalogue au lieu de tourner en rond. */
+#sous-filtres {
+  display: flex;
+  gap: 5px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding-top: 6px;
+  margin-top: 6px;
+  border-top: 1px solid var(--c-line);
+}
+#sous-filtres::-webkit-scrollbar { display: none; }
+#sous-filtres[hidden] { display: none; }
+#sous-filtres .filter {
+  height: 30px;
+  font-size: 10px;
+  background: var(--c-bg);
+}
+#sous-filtres .filter img { width: 14px; height: 14px; }
+
 .filter {
   flex: 0 0 auto;
   display: inline-flex;

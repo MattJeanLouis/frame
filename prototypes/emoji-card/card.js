@@ -11,7 +11,7 @@
 import { STICKERS, STICKER_BY_ID, DRAWERS, twemojiUrl } from '../../src/stickers.js';
 import { createClient, detectAuth, API_BASE } from '../../src/tmdb.js';
 import { createDemoClient, DEMO_POOLS } from '../../src/demo.js';
-import { loadCredential } from '../../src/storage.js';
+import { loadCredential, getKeywordCache, setKeywordId } from '../../src/storage.js';
 import { selectMovies } from '../../src/engine.js';
 
 const STORE_KEY = 'frame.v2';
@@ -89,6 +89,8 @@ const state = {
   query: '',
   type: 'all',
   genres: [],
+  sousGenre: null,
+  dejaVu: new Set(),
   page: 1,
   more: false,
   loadingMore: false,
@@ -635,7 +637,14 @@ async function loadMore() {
   more.setAttribute('aria-hidden', 'true');
   wallEl.append(more);
   try {
-    await state.pageLoader(state.page + 1, { append: true });
+    // On enchaîne jusqu'à trouver du neuf : une page entièrement déjà vue ne
+    // doit pas donner l'impression que le mur est fini.
+    const avant = () => state.wall.length + state.items.length;
+    for (let essai = 0; essai < 5 && state.more; essai++) {
+      const compte = avant();
+      await state.pageLoader(state.page + 1, { append: true });
+      if (avant() > compte) break;
+    }
   } catch {
     state.more = false;
   }
@@ -753,8 +762,10 @@ async function loadFeed(page = 1, { append = false } = {}) {
   // l'affiche plutôt que de montrer un fil vide.
   const items = interleave((avecMoment.length >= 6 ? avecMoment : tout).slice(0, FEED_MAX));
   if (append) {
-    state.items.push(...items);
-    appendFeedCards(items);
+    const gardes = neufs(items);
+    if (!gardes.length) { state.page = page; state.more = page < 500; return; }
+    state.items.push(...gardes);
+    appendFeedCards(gardes);
   } else {
     state.items = items;
     renderFeed();
@@ -974,6 +985,10 @@ async function loadWall() {
       state.pageLoader = async (page, options) => {
         const items = await discoverCorpus(page);
         if (options?.append) {
+          const gardes = neufs(items);
+          if (!gardes.length) { state.page = page; state.more = page < 500; return; }
+          items.length = 0;
+          items.push(...gardes);
           items.forEach(f => state.films.set(keyOf(f), f));
           state.wall.push(...items);
           appendWallCards(items);
@@ -1041,6 +1056,121 @@ async function search() {
   else renderWall();
 }
 
+/* ── Les sous-genres ─────────────────────────────────────────────────────── *
+   Un genre seul, c'est mille films et toujours les mêmes en tête. Les
+   sous-genres sont des MOTS-CLÉS TMDB : ils découpent assez fin pour qu'on
+   descende dans le catalogue au lieu de tourner en rond. Résolus à la demande
+   et gardés en cache — l'identifiant d'un mot-clé ne change jamais.        */
+
+const SOUS_GENRES = {
+  28: [ // Action
+    ['arts martiaux', '🥋', 'martial arts'], ['espionnage', '🕶️', 'spy'],
+    ['poursuite', '🚗', 'car chase'], ['arts martiaux', '🥋', 'kung fu'],
+    ['super-héros', '🦸', 'superhero'], ['arts martiaux', '🥋', 'samurai']
+  ],
+  12: [ // Aventure
+    ['exploration', '🧭', 'exploration'], ['naufrage', '🌊', 'shipwreck'],
+    ['trésor', '💎', 'treasure hunt'], ['jungle', '🌴', 'jungle'],
+    ['montagne', '🏔️', 'mountain climbing'], ['désert', '🏜️', 'desert']
+  ],
+  16: [ // Animation
+    ['anime', '🌸', 'anime'], ['pâte à modeler', '🧱', 'stop motion'],
+    ['conte', '🧚', 'fairy tale'], ['musical', '🎵', 'musical'],
+    ['enfance', '🧒', 'childhood'], ['adaptation manga', '📖', 'based on manga']
+  ],
+  35: [ // Comédie
+    ['parodie', '🎭', 'parody'], ['comédie romantique', '💘', 'romantic comedy'],
+    ['humour noir', '🖤', 'dark comedy'], ['buddy movie', '👯', 'buddy comedy'],
+    ['satire', '📰', 'satire'], ['stand-up', '🎤', 'stand-up comedy']
+  ],
+  80: [ // Crime
+    ['braquage', '💰', 'heist'], ['mafia', '🚬', 'mafia'],
+    ['tueur en série', '🔪', 'serial killer'], ['drogue', '💊', 'drug trade'],
+    ['braquage', '💰', 'robbery'], ['police corrompue', '🚔', 'corrupt cop']
+  ],
+  99: [ // Documentaire
+    ['nature', '🌿', 'nature'], ['musique', '🎸', 'music documentary'],
+    ['sport', '🏅', 'sport'], ['politique', '🏛️', 'politics'],
+    ['science', '🔬', 'science'], ['histoire vraie', '📜', 'true story']
+  ],
+  18: [ // Drame
+    ['famille', '👨‍👩‍👧', 'family drama'], ['deuil', '🕯️', 'grief'],
+    ['maladie', '🏥', 'illness'], ['pauvreté', '🏚️', 'poverty'],
+    ['adolescence', '🎒', 'coming of age'], ['justice', '⚖️', 'courtroom']
+  ],
+  10751: [ // Familial
+    ['enfants', '🧸', 'children'], ['animaux', '🐕', 'animal'],
+    ['magie', '🪄', 'magic'], ['Noël', '🎄', 'christmas'],
+    ['amitié', '🤝', 'friendship'], ['école', '🏫', 'school']
+  ],
+  14: [ // Fantastique
+    ['magie', '🪄', 'magic'], ['dragons', '🐉', 'dragon'],
+    ['monde imaginaire', '🗺️', 'fantasy world'], ['malédiction', '🕯️', 'curse'],
+    ['fées', '🧚', 'fairy'], ['mythe', '🏛️', 'mythology']
+  ],
+  36: [ // Histoire
+    ['seconde guerre', '🪖', 'world war ii'], ['antiquité', '🏺', 'ancient rome'],
+    ['moyen âge', '⚔️', 'middle ages'], ['biographie', '📜', 'biography'],
+    ['révolution', '✊', 'revolution'], ['empire', '👑', 'empire']
+  ],
+  27: [ // Horreur
+    ['zombies', '🧟', 'zombie'], ['vampires', '🧛', 'vampire'],
+    ['fantômes', '👻', 'ghost'], ['possession', '😈', 'demonic possession'],
+    ['tueur', '🔪', 'slasher'], ['loup-garou', '🐺', 'werewolf']
+  ],
+  10402: [ // Musique
+    ['rock', '🎸', 'rock band'], ['jazz', '🎷', 'jazz'],
+    ['classique', '🎻', 'classical music'], ['rap', '🎤', 'hip-hop'],
+    ['danse', '💃', 'dance'], ['opéra', '🎭', 'opera']
+  ],
+  9648: [ // Mystère
+    ['enquête', '🔍', 'investigation'], ['disparition', '🕳️', 'missing person'],
+    ['whodunit', '🕵️', 'whodunit'], ['amnésie', '🧠', 'amnesia'],
+    ['complot', '📎', 'conspiracy'], ['énigme', '🧩', 'puzzle']
+  ],
+  10749: [ // Romance
+    ['coup de foudre', '💘', 'love at first sight'], ['mariage', '💍', 'wedding'],
+    ['adultère', '💔', 'adultery'], ['lettres', '💌', 'love letter'],
+    ['été', '☀️', 'summer romance'], ['rupture', '🥀', 'breakup']
+  ],
+  878: [ // Science-Fiction
+    ['intelligence artificielle', '🤖', 'artificial intelligence'],
+    ['voyage spatial', '🚀', 'space travel'], ['dystopie', '🏚️', 'dystopia'],
+    ['voyage temporel', '⏳', 'time travel'], ['cyberpunk', '🌃', 'cyberpunk'],
+    ['invasion', '👽', 'alien invasion'], ['clonage', '🧬', 'cloning']
+  ],
+  53: [ // Thriller
+    ['enlèvement', '🪢', 'kidnapping'], ['trahison', '🎭', 'betrayal'],
+    ['espionnage', '🕶️', 'spy'], ['vengeance', '🔥', 'revenge'],
+    ['poursuite', '🏃', 'chase'], ['manipulation', '🪞', 'manipulation']
+  ],
+  10752: [ // Guerre
+    ['seconde guerre', '🪖', 'world war ii'], ['viêtnam', '🌴', 'vietnam war'],
+    ['tranchées', '⛏️', 'trench warfare'], ['résistance', '✊', 'resistance'],
+    ['aviation', '✈️', 'fighter pilot'], ['débarquement', '🚢', 'd-day']
+  ],
+  37: [ // Western
+    ['shérif', '⭐', 'sheriff'], ['hors-la-loi', '🤠', 'outlaw'],
+    ['vengeance', '🔥', 'revenge'], ['frontière', '🌵', 'frontier'],
+    ['duel', '🔫', 'gunfight'], ['ranch', '🐎', 'ranch']
+  ]
+};
+
+/** L'identifiant d'un mot-clé, demandé une fois puis gardé. */
+async function motCleId(nom) {
+  const cache = getKeywordCache();
+  if (Object.prototype.hasOwnProperty.call(cache, nom)) return cache[nom];
+  try {
+    const data = await api('/search/keyword', { query: nom });
+    const exact = (data.results || []).find(k => String(k.name).toLowerCase() === nom.toLowerCase());
+    const id = exact ? exact.id : ((data.results || [])[0]?.id ?? null);
+    setKeywordId(nom, id);
+    return id;
+  } catch {
+    return null;
+  }
+}
+
 /* ── Chercher et filtrer ──────────────────────────────────────────────────── */
 
 /* Le type, puis les genres. Chaque filtre a son pictogramme : le mot dit quoi,
@@ -1091,6 +1221,43 @@ function filterChip(emoji, label, on, onToggle) {
   return button;
 }
 
+/**
+ * Ce qu'on a déjà montré dans cette session.
+ *
+ * C'est la réponse à « on tourne en rond » : discover renvoie toujours les
+ * mêmes vingt films en tête, donc changer de page ou de catégorie les ramenait
+ * indéfiniment. On ne montre un film qu'une fois, et on enchaîne les pages
+ * jusqu'à en trouver d'autres.
+ */
+function neufs(items) {
+  const gardes = items.filter(film => !state.dejaVu.has(keyOf(film)));
+  gardes.forEach(film => state.dejaVu.add(keyOf(film)));
+  return gardes;
+}
+
+/** Les sous-genres du genre choisi, s'il en a. */
+function renderSousFiltres() {
+  const host = el('sous-filtres');
+  const choisis = state.genres.filter(id => SOUS_GENRES[id]);
+  if (choisis.length !== 1) {
+    host.hidden = true;
+    host.replaceChildren();
+    return;
+  }
+
+  const frag = document.createDocumentFragment();
+  for (const [nom, emoji, mot] of SOUS_GENRES[choisis[0]]) {
+    frag.append(filterChip(emoji, nom, state.sousGenre === mot, () => {
+      state.sousGenre = state.sousGenre === mot ? null : mot;
+      state.dejaVu = new Set();
+      renderSousFiltres();
+      scheduleFilter();
+    }));
+  }
+  host.replaceChildren(frag);
+  host.hidden = false;
+}
+
 function renderFilters() {
   const frag = document.createDocumentFragment();
 
@@ -1111,6 +1278,7 @@ function renderFilters() {
   for (const type of TYPES) {
     frag.append(filterChip(type.emoji, type.label, state.type === type.id, () => {
       state.type = type.id;
+      state.dejaVu = new Set();
       renderFilters();
       scheduleFilter();
     }));
@@ -1126,7 +1294,11 @@ function renderFilters() {
       const at = state.genres.indexOf(genre.id);
       if (at >= 0) state.genres.splice(at, 1);
       else state.genres.push(genre.id);
+      // Un autre genre, d'autres sous-genres, et une ardoise neuve.
+      state.sousGenre = null;
+      state.dejaVu = new Set();
       renderFilters();
+      renderSousFiltres();
       scheduleFilter();
     }));
   }
@@ -1186,11 +1358,13 @@ async function runSearch(page = 1, { append = false } = {}) {
         .filter(r => r.media_type === 'movie' || r.media_type === 'tv')
         .map(r => normalize(r, r.media_type));
     } else {
+      const motCle = state.sousGenre ? await motCleId(state.sousGenre) : null;
       const kinds = state.type === 'all' ? ['movie', 'tv'] : [state.type];
       const paquets = await Promise.all(kinds.map(kind => api('/discover/' + kind, {
         sort_by: 'popularity.desc',
         'vote_count.gte': 100,
         with_genres: state.genres.join(','),
+        with_keywords: motCle || undefined,
         page
       }).catch(() => ({ results: [] }))));
       trouves = paquets.flatMap((paquet, i) => (paquet.results || []).map(r => normalize(r, kinds[i])));
@@ -1210,8 +1384,10 @@ async function runSearch(page = 1, { append = false } = {}) {
   if (state.mode === 'film') {
     trouves.forEach(f => state.films.set(keyOf(f), f));
     if (append) {
-      state.wall.push(...trouves);
-      appendWallCards(trouves);
+      const gardes = neufs(trouves);
+      if (!gardes.length) { state.page = page; state.more = page < 500; return; }
+      state.wall.push(...gardes);
+      appendWallCards(gardes);
     } else {
       state.wall = trouves;
       state.scroll.film = { top: 0, left: 0 };
@@ -2523,6 +2699,7 @@ function start() {
 
   searchInput.addEventListener('input', () => {
     state.query = searchInput.value;
+    state.dejaVu = new Set();
     clearButton.hidden = !state.query;
     scheduleFilter();
   });
