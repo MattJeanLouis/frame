@@ -90,6 +90,7 @@ const state = {
   type: 'all',
   genres: [],
   sousGenre: null,
+  tris: [],
   dejaVu: new Set(),
   page: 1,
   more: false,
@@ -1056,6 +1057,108 @@ async function search() {
   else renderWall();
 }
 
+
+/* ── Les ordres de présentation ──────────────────────────────────────────── *
+   TMDB n'accepte QU'UN tri. Les suivants s'appliquent donc ici, sur ce qu'on
+   a déjà reçu — c'est une limite de la source, pas un choix. Le premier tri
+   part au serveur : c'est lui qui décide de ce qu'on descend chercher.      */
+
+const TRIS = [
+  { id: 'populaire', emoji: '🔥', nom: 'Populaires', movie: 'popularity.desc', tv: 'popularity.desc' },
+  { id: 'recent', emoji: '🆕', nom: 'Récents', movie: 'primary_release_date.desc', tv: 'first_air_date.desc' },
+  { id: 'ancien', emoji: '⏳', nom: 'Anciens', movie: 'primary_release_date.asc', tv: 'first_air_date.asc' },
+  { id: 'note', emoji: '⭐', nom: 'Mieux notés', movie: 'vote_average.desc', tv: 'vote_average.desc' },
+  { id: 'votes', emoji: '🗳️', nom: 'Plus votés', movie: 'vote_count.desc', tv: 'vote_count.desc' },
+  { id: 'recettes', emoji: '💰', nom: 'Plus rentables', movie: 'revenue.desc', tv: 'popularity.desc' },
+  { id: 'court', emoji: '⏱️', nom: 'Les plus courts', movie: 'popularity.desc', tv: 'popularity.desc' },
+  { id: 'obscur', emoji: '🕯️', nom: 'Moins connus', movie: 'popularity.asc', tv: 'popularity.asc' },
+  { id: 'alpha', emoji: '🔤', nom: 'A → Z', movie: 'original_title.asc', tv: 'name.asc' },
+  { id: 'hasard', emoji: '🎲', nom: 'Au hasard', movie: null, tv: null }
+];
+
+const triParId = id => TRIS.find(t => t.id === id) || null;
+
+/** Comment comparer deux films pour un critère. Le signe porte le sens. */
+const COMPARER = {
+  populaire: f => -(f.popularity || 0),
+  recent: f => -(Date.parse(f.date) || 0),
+  ancien: f => (Date.parse(f.date) || 0),
+  note: f => -(f.vote_average || 0),
+  votes: f => -(f.vote_count || 0),
+  recettes: f => -(f.revenue || 0),
+  court: f => (f.runtime || 999),
+  obscur: f => (f.popularity || 0),
+  alpha: f => String(f.title || '').toLowerCase()
+};
+
+/** Le tri cumulé : les critères s'appliquent dans l'ordre où on les a posés. */
+function trier(items) {
+  let out = [...items];
+  const criteres = state.tris.map(id => COMPARER[id]).filter(Boolean);
+  if (criteres.length) {
+    out.sort((a, b) => {
+      for (const cle of criteres) {
+        const va = cle(a);
+        const vb = cle(b);
+        if (va < vb) return -1;
+        if (va > vb) return 1;
+      }
+      return 0;
+    });
+  }
+  if (state.tris.includes('hasard')) {
+    // Un vrai mélange : c'est la seule façon de ne pas revoir les mêmes.
+    for (let i = out.length - 1; i > 0; i--) {
+      const k = Math.floor(Math.random() * (i + 1));
+      [out[i], out[k]] = [out[k], out[i]];
+    }
+  }
+  return out;
+}
+
+/** Le tri qui part à TMDB : le premier posé, et lui seul. */
+function triServeur(kind) {
+  for (const id of state.tris) {
+    const tri = triParId(id);
+    if (tri && tri[kind]) return tri[kind];
+  }
+  return null;
+}
+
+/** Les tris disponibles, puis ceux qui sont actifs, dans leur ordre. */
+function renderTris() {
+  const host = el('tris');
+  const frag = document.createDocumentFragment();
+
+  // Les actifs d abord, dans l ordre ou on les a poses : le cumul se lit
+  // dans la liste elle-meme, sans chiffre.
+  const ordonnes = [...TRIS].sort((a, b) => {
+    const ra = state.tris.indexOf(a.id);
+    const rb = state.tris.indexOf(b.id);
+    if (ra < 0 && rb < 0) return 0;
+    if (ra < 0) return 1;
+    if (rb < 0) return -1;
+    return ra - rb;
+  });
+
+  for (const tri of ordonnes) {
+    const rang = state.tris.indexOf(tri.id);
+    const actif = rang >= 0;
+    const chip = filterChip(tri.emoji, tri.nom, actif, () => {
+      const at = state.tris.indexOf(tri.id);
+      if (at >= 0) state.tris.splice(at, 1);
+      else state.tris.push(tri.id);
+      state.dejaVu = new Set();
+      renderTris();
+      scheduleFilter();
+    });
+    // Le rang se lit dans l'ordre des pastilles actives, pas dans un chiffre.
+    chip.dataset.rang = String(rang);
+    frag.append(chip);
+  }
+  host.replaceChildren(frag);
+}
+
 /* ── Les sous-genres ─────────────────────────────────────────────────────── *
    Un genre seul, c'est mille films et toujours les mêmes en tête. Les
    sous-genres sont des MOTS-CLÉS TMDB : ils découpent assez fin pour qu'on
@@ -1339,7 +1442,8 @@ function scheduleFilter() {
 }
 
 const filtresActifs = () =>
-  Boolean(state.query.trim()) || state.type !== 'all' || state.genres.length > 0;
+  Boolean(state.query.trim()) || state.type !== 'all' || state.genres.length > 0 ||
+  state.tris.some(id => id !== 'populaire');
 
 /**
  * La recherche. TMDB ne sait pas filtrer une recherche par texte : on filtre
@@ -1361,14 +1465,16 @@ async function runSearch(page = 1, { append = false } = {}) {
       const motCle = state.sousGenre ? await motCleId(state.sousGenre) : null;
       const kinds = state.type === 'all' ? ['movie', 'tv'] : [state.type];
       const paquets = await Promise.all(kinds.map(kind => api('/discover/' + kind, {
-        sort_by: 'popularity.desc',
-        'vote_count.gte': 100,
+        sort_by: triServeur(kind) || 'popularity.desc',
+        // Un tri par note sans plancher de votes remonte des films à trois
+        // voix : le plancher monte avec le tri.
+        'vote_count.gte': state.tris[0] === 'note' ? 1000 : 100,
         with_genres: state.genres.join(','),
         with_keywords: motCle || undefined,
         page
       }).catch(() => ({ results: [] }))));
       trouves = paquets.flatMap((paquet, i) => (paquet.results || []).map(r => normalize(r, kinds[i])));
-      trouves.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
+      trouves = trier(trouves);
     }
   } catch (error) {
     announce('La recherche a échoué : ' + error.message);
@@ -2674,6 +2780,8 @@ function start() {
 
   renderModes();
   renderFilters();
+  renderSousFiltres();
+  renderTris();
   renderDrawers();
   renderPalette();
   renderQueryChips();

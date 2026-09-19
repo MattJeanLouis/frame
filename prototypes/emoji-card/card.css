@@ -1444,6 +1444,28 @@ img { display: block; }
 
 /* Les sous-genres : une seconde rangée, sous le genre choisi. Ils découpent
    assez fin pour descendre dans le catalogue au lieu de tourner en rond. */
+/* Les ordres de présentation : beaucoup d'options, et cumulables — le rang
+   se lit dans l'ordre où on les a posés. */
+#tris {
+  display: flex;
+  gap: 5px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding-top: 6px;
+  margin-top: 6px;
+  border-top: 1px solid var(--c-line);
+}
+#tris::-webkit-scrollbar { display: none; }
+#tris .filter { height: 30px; font-size: 10px; }
+#tris .filter img { width: 14px; height: 14px; }
+#tris .filter[aria-pressed="true"] { border-color: var(--c-accent); }
+/* Le premier critère posé commande : il part au serveur, les autres suivent. */
+#tris .filter[data-rang="0"] {
+  background: var(--c-accent);
+  color: var(--c-accent-ink);
+}
+#tris .filter[data-rang="0"] img { opacity: 1; }
+
 #sous-filtres {
   display: flex;
   gap: 5px;
