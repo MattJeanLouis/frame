@@ -1443,10 +1443,19 @@ function buildDeck(card, film) {
   layer2.className = 'peek__plate';
 
   const slides = filmSlides(film);
+  /* Les segments sont cliquables : ils en ont l'air, donc ils doivent l'être.
+     On ne fait pas cliquer sur une barre qui ne répond pas. */
   for (let i = 0; i < slides.length; i++) {
-    const seg = document.createElement('span');
+    const seg = document.createElement('button');
+    seg.type = 'button';
     seg.className = 'peek__seg';
+    seg.setAttribute('aria-label', 'Information ' + (i + 1) + ' sur ' + slides.length);
     seg.append(document.createElement('i'));
+    seg.addEventListener('click', event => {
+      event.stopPropagation();
+      clearTimeout(peekTimer);
+      showSlide(card, film, i);
+    });
     bar.append(seg);
   }
 

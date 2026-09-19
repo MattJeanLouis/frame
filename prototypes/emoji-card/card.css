@@ -1485,29 +1485,47 @@ img { display: block; }
 }
 
 /* La barre de segments : où on en est, et le temps qu'il reste. */
-.peek__bar { display: flex; gap: 3px; flex: 0 0 auto; margin-bottom: 10px; }
+.peek__bar { display: flex; gap: 3px; flex: 0 0 auto; margin: -7px 0 4px; }
+/* Le trait fait 3 px, mais la cible en fait 17 : on clique sur l'onglet, pas
+   sur le trait. */
 .peek__seg {
   flex: 1;
-  height: 2px;
-  border-radius: 2px;
+  padding: 7px 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.peek__seg i {
+  display: block;
+  height: 3px;
+  border-radius: 3px;
   background: rgba(242, 238, 230, 0.22);
   overflow: hidden;
 }
-.peek__seg i {
+.peek__seg i::after {
+  content: "";
   display: block;
   height: 100%;
   background: var(--c-accent);
   transform: scaleX(0);
   transform-origin: left;
 }
-.peek__seg.is-done i { transform: scaleX(1); }
+.peek__seg.is-done i::after { transform: scaleX(1); }
 /* Le compte à rebours : la durée est écrite ici ET dans DWELL_MS, dans card.js. */
-.peek__seg.is-live i { animation: seg-fill 5200ms linear forwards; }
+.peek__seg.is-live i::after { animation: seg-fill 5200ms linear forwards; }
 @keyframes seg-fill { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 
 /* Le groupe occupe la carte et n'en sort jamais. */
 .peek__body { flex: 1; min-height: 0; overflow: hidden; }
-.peek__slide { display: grid; align-content: start; gap: 8px; height: 100%; overflow: hidden; }
+/* En colonne, pas en grille : une rangée de grille se règle sur son contenu, et
+   une vidéo en position absolue n'a pas de contenu — elle tombait à zéro. */
+.peek__slide {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+  overflow: hidden;
+}
 
 .peek__slide .text__title { font-size: var(--fs-md); }
 .peek__slide .text__meta { font-size: 8.5px; letter-spacing: 0.1em; }
@@ -1525,13 +1543,23 @@ img { display: block; }
 .peek__slide .text__row--seul { grid-template-columns: minmax(0, 1fr); }
 
 /* Le moment : plein cadre, sans texte autour. */
-.peek__moment { position: relative; height: 100%; overflow: hidden; border-radius: 3px; background: #000; }
+.peek__moment {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: 3px;
+  background: #000;
+}
 .peek__moment iframe {
   position: absolute;
-  top: -50%;
-  left: -50%;
-  width: 200%;
-  height: 200%;
+  /* Même cadrage qu'au mode vertical : une vidéo 16:9 dans une carte portrait
+     laisserait sinon des bandes noires, le lecteur letterboxant à l'intérieur
+     de l'iframe. */
+  top: -150%;
+  left: -150%;
+  width: 400%;
+  height: 400%;
   border: 0;
   pointer-events: none;
 }
