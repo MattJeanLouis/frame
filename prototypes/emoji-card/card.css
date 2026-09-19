@@ -603,6 +603,17 @@ img { display: block; }
   transform: scale(1.15);
 }
 
+/* « Voir l'affiche » : la bande-annonce s'efface, l'affiche s'éclaire et se
+   montre entière. Le sélecteur porte l'identifiant pour passer devant la règle
+   `:has()` ci-dessus, qui floute l'affiche tant que la vidéo joue. */
+#card.moment-poster .card-stage iframe { opacity: 0; }
+#card.moment-poster .card-stage__still {
+  filter: none;
+  transform: none;
+  object-fit: contain;
+  object-position: center;
+}
+
 /* Le voile de la salle : le moment éclaire, il n'éblouit pas. */
 .card-stage::after {
   content: "";

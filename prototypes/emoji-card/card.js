@@ -1453,52 +1453,9 @@ function reelCard(item, index) {
     foot.inert = hidden;
   });
   controls.append(focus);
-  if (video) {
-    const sound = document.createElement('button');
-    sound.type = 'button'; sound.textContent = 'Activer le son';
-    sound.setAttribute('aria-pressed', 'false');
-    sound.addEventListener('click', () => {
-      const on = card.dataset.sound !== 'on';
-      for (const other of wallEl.querySelectorAll('.reel[data-sound="on"]')) {
-        other.dataset.sound = 'off';
-        playerCommand(other.querySelector('iframe'), 'mute');
-        const control = other.querySelector('[data-sound-control]');
-        if (control) { control.textContent = 'Activer le son'; control.setAttribute('aria-pressed', 'false'); }
-      }
-      card.dataset.sound = on ? 'on' : 'off';
-      const frame = stage.querySelector('iframe');
-      playerCommand(frame, on ? 'unMute' : 'mute');
-      if (on) { playerCommand(frame, 'setVolume', [100]); playerCommand(frame, 'playVideo'); }
-      sound.textContent = on ? 'Couper le son' : 'Activer le son';
-      sound.setAttribute('aria-pressed', String(on));
-    });
-    sound.dataset.soundControl = '';
-    controls.append(sound);
-    if (film.poster_path) {
-      const poster = document.createElement('button');
-      poster.type = 'button'; poster.textContent = 'Voir l’affiche';
-      poster.setAttribute('aria-pressed', 'false');
-      const still = stage.querySelector('.reel__still');
-      const originalStill = still?.src;
-      poster.addEventListener('click', () => {
-        const showingPoster = card.classList.toggle('moment-poster');
-        poster.textContent = showingPoster ? 'Voir la bande-annonce' : 'Voir l’affiche';
-        poster.setAttribute('aria-pressed', String(showingPoster));
-        const frame = stage.querySelector('iframe');
-        playerCommand(frame, 'mute');
-        card.dataset.sound = 'off';
-        sound.textContent = 'Activer le son';
-        sound.setAttribute('aria-pressed', 'false');
-        sound.disabled = showingPoster;
-        if (still) still.src = showingPoster ? state.client.posterUrl(film.poster_path, 'w780') : originalStill;
-        if (showingPoster) playerCommand(frame, 'pauseVideo');
-        else if (!frame.getAttribute('src')) {
-          frame.src = momentUrl(video.key); watchPlayer(frame); armPlayFallback(stage, video.key);
-        } else playerCommand(frame, 'playVideo');
-      });
-      controls.append(poster);
-    }
-  }
+  /* Le son et l'affiche ne sont plus ici : ils vivent dans la barre de lecture
+     partagée, avec le reste des commandes, dans les deux modes. Deux boutons
+     pour la même chose à deux endroits, c'était deux vérités possibles. */
   card.append(controls);
   if (video) stage.append(buildPlaybackControls(stage, film, video));
 
@@ -1540,8 +1497,7 @@ const momentObserver = new IntersectionObserver(entries => {
       frame.removeAttribute('src');
       frame.classList.remove('is-live');
       entry.target.dataset.sound = 'off';
-      const sound = entry.target.querySelector('[data-sound-control]');
-      if (sound) { sound.textContent = 'Activer le son'; sound.setAttribute('aria-pressed', 'false'); }
+      majBoutonSon(frame);
     }
   }
 }, { root: wallEl, threshold: [0, 0.6] });
@@ -3254,6 +3210,107 @@ function buildFilmLinks(film) {
 }
 
 const timeLabel = seconds => Math.floor(Math.max(0, seconds || 0) / 60) + ':' + String(Math.floor(Math.max(0, seconds || 0) % 60)).padStart(2,'0');
+
+/* ── Le son et l'affiche : les deux commandes qui manquaient à la fiche ──────
+   Le fil vertical les avait, la fiche non. On y lisait donc une bande-annonce
+   en silence sans aucun moyen de l'entendre, et l'affiche restait dessous,
+   floutée, impossible à voir. Les voici dans le lecteur PARTAGÉ : une seule
+   implementation, les mêmes mots, au même endroit, dans les deux modes. */
+
+/** Tous les lecteurs de la page, fiche comprise. */
+const lecteurs = () => [...document.querySelectorAll('.reel__stage iframe, .card-stage iframe')];
+
+/** La racine qui porte l'état d'un lecteur : la carte du fil, ou la fiche. */
+const racineLecteur = frame => frame?.closest('.reel, #card') || null;
+
+const sonDuLecteur = frame => racineLecteur(frame)?.dataset.sound === 'on';
+
+/** Le bouton de son d'un lecteur dit toujours la vérité sur SON lecteur. */
+function majBoutonSon(frame) {
+  const bouton = frame.closest('.reel__stage, .card-stage')?.querySelector('[data-sound-control]');
+  if (!bouton) return;
+  const on = sonDuLecteur(frame);
+  bouton.textContent = on ? 'Couper le son' : 'Activer le son';
+  bouton.setAttribute('aria-pressed', String(on));
+  /* Devant l'affiche, la bande-annonce est en pause : proposer de couper un son
+     qui ne joue pas serait un affordance qui ment. */
+  bouton.disabled = Boolean(racineLecteur(frame)?.classList.contains('moment-poster'));
+}
+
+/**
+ * Un seul lecteur parle à la fois.
+ *
+ * Une bande-annonce démarre muette ; l'activer fait taire toutes les autres, sur
+ * le mur comme dans le fil. Sans cela, deux aperçus qui se chevauchent feraient
+ * deux sons superposés — et rien ne dit lequel couper.
+ */
+function setSound(stage, on) {
+  const moi = stage.querySelector('iframe');
+  for (const frame of lecteurs()) {
+    const racine = racineLecteur(frame);
+    const actif = Boolean(on) && frame === moi;
+    if (racine) racine.dataset.sound = actif ? 'on' : 'off';
+    if (actif) {
+      playerCommand(frame, 'unMute');
+      playerCommand(frame, 'setVolume', [100]);
+      playerCommand(frame, 'playVideo');
+    } else {
+      playerCommand(frame, 'mute');
+    }
+    majBoutonSon(frame);
+  }
+}
+
+/**
+ * L'affiche en grand — et le retour.
+ *
+ * Quand la bande-annonce joue, l'affiche est DESSOUS, floutée : c'est le fond de
+ * la salle, pas une image qu'on peut regarder. Le geste existait dans le fil
+ * vertical et nulle part ailleurs ; il vaut maintenant pour la fiche aussi.
+ */
+function basculerAffiche(stage, film, video) {
+  const racine = racineLecteur(stage.querySelector('iframe'));
+  const frame = stage.querySelector('iframe');
+  const still = stage.querySelector('.reel__still, .card-stage__still');
+  if (!racine || !still) return;
+
+  const montre = !racine.classList.contains('moment-poster');
+  racine.classList.toggle('moment-poster', montre);
+
+  if (montre) {
+    /* L'affiche se regarde en silence : laisser la bande-annonce parler derrière
+       une image fixe serait du bruit sans image. */
+    setSound(stage, false);
+    playerCommand(frame, 'pauseVideo');
+    if (still.dataset.still === undefined) still.dataset.still = still.getAttribute('src') || '';
+    still.src = state.client.posterUrl(film.poster_path, 'w780');
+  } else {
+    if (still.dataset.still) still.src = still.dataset.still;
+    /* Si le lecteur n'a jamais démarré — commandes envoyées avant qu'il soit
+       prêt, et YouTube les ignore — on le RECHARGE au lieu d'attendre une
+       commande qui se perd. Revenir de l'affiche doit rendre une image qui
+       bouge, pas une image fixe avec un bouton de lecture par-dessus. */
+    if (video && !frame.getAttribute('src')) {
+      frame.src = momentUrl(video.key);
+      watchPlayer(frame);
+      armPlayFallback(stage, video.key);
+    } else if (video && !frame.classList.contains('is-live')) {
+      stage.querySelector('.reel__play')?.remove();
+      frame.src = momentUrl(video.key);
+      watchPlayer(frame);
+      armPlayFallback(stage, video.key);
+    } else {
+      playerCommand(frame, 'playVideo');
+    }
+  }
+
+  const bouton = racine.querySelector('[data-poster-control]');
+  if (bouton) {
+    bouton.textContent = montre ? 'Voir la bande-annonce' : 'Voir l’affiche';
+    bouton.setAttribute('aria-pressed', String(montre));
+  }
+  for (const autre of lecteurs()) majBoutonSon(autre);
+}
 function updatePlaybackControls(frame) {
   const bar = frame.closest('.reel__stage, .card-stage')?.querySelector('.playback');
   if (!bar) return;
@@ -3273,8 +3330,12 @@ function updatePlaybackControls(frame) {
 function buildPlaybackControls(stage, film, video) {
   const bar = document.createElement('div'); bar.className = 'playback';
   const row = document.createElement('div'); row.className = 'playback__buttons';
+  /* Ce qui n'a de sens QUE devant la bande-annonce : pause, sauts, vitesse,
+     position. Le son et l'affiche en sont dehors, sinon on ne pourrait plus
+     revenir de l'affiche — le bouton se cacherait avec le reste. */
+  const moment = document.createElement('div'); moment.className = 'playback__moment';
   const frame = () => stage.querySelector('iframe');
-  const make = (label, action) => { const button = document.createElement('button'); button.type = 'button'; button.textContent = label; button.addEventListener('click', action); row.append(button); return button; };
+  const make = (label, action) => { const button = document.createElement('button'); button.type = 'button'; button.textContent = label; button.addEventListener('click', action); moment.append(button); return button; };
   const pause = make('Pause', () => playerCommand(frame(), frame()?.__playback?.playerState === 1 ? 'pauseVideo' : 'playVideo')); pause.dataset.pause = '';
   for (const [label, delta] of [['−10 s',-10],['+10 s',10]]) make(label, () => {
     const info = frame()?.__playback || {};
@@ -3282,8 +3343,26 @@ function buildPlaybackControls(stage, film, video) {
   });
   const speed = document.createElement('select'); speed.setAttribute('aria-label','Vitesse de lecture');
   for (const rate of [0.5,1,1.25,1.5,2]) { const option = document.createElement('option'); option.value = rate; option.textContent = rate + '×'; option.selected = rate === 1; speed.append(option); }
-  speed.addEventListener('change', () => playerCommand(frame(),'setPlaybackRate',[Number(speed.value)])); row.append(speed);
+  speed.addEventListener('change', () => playerCommand(frame(),'setPlaybackRate',[Number(speed.value)])); moment.append(speed);
+  row.append(moment);
   row.append(externalLink('YouTube ↗','https://www.youtube.com/watch?v=' + encodeURIComponent(video.key)));
+
+  const son = document.createElement('button');
+  son.type = 'button'; son.textContent = 'Activer le son';
+  son.setAttribute('aria-pressed', 'false');
+  son.dataset.soundControl = '';
+  son.addEventListener('click', () => setSound(stage, !sonDuLecteur(stage.querySelector('iframe'))));
+  row.append(son);
+
+  if (film.poster_path && stage.querySelector('.reel__still, .card-stage__still')) {
+    const affiche = document.createElement('button');
+    affiche.type = 'button'; affiche.textContent = 'Voir l’affiche';
+    affiche.setAttribute('aria-pressed', 'false');
+    affiche.dataset.posterControl = '';
+    affiche.addEventListener('click', () => basculerAffiche(stage, film, video));
+    row.append(affiche);
+  }
+
   const seekRow = document.createElement('div'); seekRow.className = 'playback__seek';
   const seek = document.createElement('input'); seek.type = 'range'; seek.min = '0'; seek.max = '1'; seek.step = '1'; seek.value = '0'; seek.disabled = true; seek.setAttribute('aria-label','Position dans la bande-annonce');
   seek.addEventListener('input', () => { seek.dataset.seeking = 'true'; });

@@ -222,7 +222,14 @@
 .availability__offers strong { color: var(--c-text); font-weight: 500; }
 .availability__offers small { display: block; margin-top: 12px; color: var(--c-text-dim); font-size: 10px; }
 .playback { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); z-index: 9; width: min(620px,calc(100% - 32px)); padding: 10px 14px; background: #101720ed; border: 1px solid #f1ede425; border-radius: 4px; color: var(--c-text); }
-.playback__buttons { display: flex; align-items: center; gap: 8px; }
+.playback__buttons { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.playback__moment { display: flex; align-items: center; gap: 8px; }
+/* L'affiche remplace la bande-annonce : pause, sauts, vitesse et position
+   n'ont plus d'objet. Le son et l'affiche, eux, RESTENT — sinon le bouton qui
+   vient d'afficher l'affiche disparaîtrait avec le reste, et on ne pourrait
+   plus revenir. */
+.moment-poster .playback__moment,
+.moment-poster .playback__seek { display: none; }
 .playback button, .playback select, .playback a { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; padding: 0 12px; border: 0; border-radius: 3px; background: #f1ede40d; color: var(--c-text); font: 12px var(--ff-text); cursor: pointer; text-decoration: none; }
 .playback select { background: #232c37; }
 .playback a { margin-left: auto; }
@@ -232,7 +239,6 @@
 .playback-status { display: block; font-size: 11px; }
 .mode-reel .reel__foot { bottom: 124px; max-height: calc(100% - 210px); }
 .mode-reel .reel__rail { bottom: 124px; }
-.moment-poster .playback { display: none; }
 @media(max-width:760px) {
   .collection-heading { flex-wrap: wrap; }
   .catalogue-options { margin-left: auto; }

@@ -482,7 +482,65 @@ objet), et deux titres de section restaient affichés au-dessus d'un nuage vide.
 
 ---
 
-## 9. Comment on vérifie
+## 9. Le lecteur : les mêmes commandes dans les deux modes
+
+Matt : « j'ai pas de quoi activer le son ou voir l'affiche dans le player du mode
+explorer alors que je les ai dans le player de l'autre mode. »
+
+### Deux vrais manques
+
+Le fil vertical proposait « Activer le son » et « Voir l'affiche ». La fiche
+d'Explorer, elle, n'avait que pause, ±10 s, vitesse et position. Deux
+conséquences, toutes les deux réelles :
+
+- **la bande-annonce démarre MUETTE** (`mute=1` : sans cela, aucune ne démarre).
+  Dans la fiche, on la regardait donc en silence sans aucun moyen de l'entendre ;
+- **l'affiche est DESSOUS la vidéo**, floutée à 22 px : c'est le fond de la salle,
+  pas une image. Dans la fiche, on ne pouvait pas la voir.
+
+### Une seule implémentation, dans le lecteur partagé
+
+Les deux commandes sont entrées dans `buildPlaybackControls`, que les deux modes
+utilisent déjà. Le fil vertical ne les a plus en double dans son menu — il ne
+garde que « Masquer les infos », qui n'a de sens que là.
+
+Règle tenue : **un seul lecteur parle à la fois.** Lever le son quelque part le
+baisse partout ailleurs, et chaque bouton redit l'état réel de SON lecteur.
+
+### Le piège que la mise en page a failli refermer
+
+`.moment-poster .playback { display: none }` cachait toute la barre quand
+l'affiche était montrée. En y déplaçant le bouton d'affiche, il se serait caché
+**avec ce qu'il venait de remplacer** : plus aucun moyen de revenir à la
+bande-annonce. La règle ne cache donc plus que `.playback__moment` et
+`.playback__seek` — ce qui n'a plus d'objet — et laisse le son et l'affiche.
+
+### Vérifié en commandant vraiment
+
+`verif-lecteur-commun.mjs` n'éprouve pas qu'un bouton existe : il espionne les
+commandes réellement sérialisées vers YouTube et exige `unMute`, `setVolume`,
+`mute`, `pauseVideo`. Un bouton qui changerait de libellé sans rien commander
+serait pire que pas de bouton.
+
+Et parce que l'espion lui-même peut mentir : la première version enveloppait
+`contentWindow` dans un `Proxy`. L'application route les messages de YouTube en
+comparant `frame.contentWindow === event.source` — un Proxy rend cette
+comparaison fausse, le lecteur ne répondait plus, la vidéo ne jouait plus, et le
+test accusait l'application d'une panne **qu'il avait fabriquée**. L'espion
+enveloppe maintenant `JSON.stringify`, qui précède l'envoi : toutes les
+commandes passent, aucune identité ne change.
+
+### Reste ouvert
+
+- **Le son ne survit pas à un rechargement** : chaque bande-annonce redémarre
+  muette, par choix — c'est ce qui permet à onze aperçus de coexister.
+- **La position n'est pas mémorisée** d'une ouverture à l'autre.
+- **YouTube impose son cadre** : `controls=0` est ignoré, la barre native reste
+  visible. Compromis déjà consigné, on garde le cadrage correct.
+
+---
+
+## 10. Comment on vérifie
 
 Ce qui compte n'est pas qu'un test passe, c'est que l'application fasse ce qu'on
 croit qu'elle fait. Les scripts de `.superpowers/verify/` pilotent Chrome en
@@ -501,6 +559,7 @@ node verif-profil.mjs             # la synchronisation, entre DEUX navigateurs
 node verif-watchlist.mjs          # export, import, lien de partage à TROIS navigateurs
 node graine-miroir.mjs            # fabrique un vrai carnet à trous (61 films TMDB)
 node verif-miroir.mjs             # le miroir, chiffre par chiffre, contre un oracle Node
+node verif-lecteur-commun.mjs     # son et affiche, dans le player des DEUX modes
 ```
 
 `verif-publie.mjs` a besoin de `npm run build` puis `npm run servir-dist` : il
@@ -511,11 +570,12 @@ part jamais dans la page.
 `FRAME_BASE=http://127.0.0.1:8094/` — c'est le seul moyen de savoir si le miroir
 survit au passage par le relais.
 
-### Quatre scripts de vérification sont périmés
+### Cinq scripts de vérification sont périmés
 
 Constaté le 20 septembre 2026, et **vérifié contre le commit précédent** pour
 être sûr que ce ne sont pas des régressions fraîches. `verif-signifiants.mjs`,
-`verif-affordances.mjs` et `verif-reactif.mjs` éprouvent le **survol d'avant**.
+`verif-affordances.mjs`, `verif-reactif.mjs` et `verif-video.mjs` éprouvent le
+**survol d'avant**.
 
 - Ils attendent la classe `.card.is-peeking` et le diaporama `card.__deck`.
   Or `is-peeking` n'est **plus posée nulle part** dans `card.js` : le survol
@@ -533,7 +593,7 @@ compromis déjà consigné — YouTube impose son cadre, on a choisi le cadrage
 correct plutôt que de masquer ses commandes — mais le script, lui, attend
 l'inverse.
 
-Ces quatre scripts sont à réécrire ou à supprimer. Les six règles CSS mortes
+Ces cinq scripts sont à réécrire ou à supprimer. Les six règles CSS mortes
 `.card.is-peeking` relèvent de la couche DA, pas du fonctionnel.
 
 `verif-soiree.mjs` a besoin de deux Chrome sur des ports de débogage différents (9222 et
