@@ -839,71 +839,11 @@ img { display: block; }
 }
 .state[aria-pressed="true"] img { opacity: 1; }
 
-/* ── Le miroir ───────────────────────────────────────────────────────────── */
-
-#mirror {
-  position: fixed;
-  inset: 0;
-  z-index: 70;
-  background: var(--c-bg);
-  overflow-y: auto;
-  animation: sheet-in 420ms var(--e-out);
-}
-#mirror[hidden] { display: none; }
-
-.mirror-inner {
-  min-height: 100%;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  padding: 64px 16px 40px;
-}
-
-.mirror-row { margin-bottom: 40px; }
-.mirror-row:last-child { margin-bottom: 0; }
-
-.mirror-cloud {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 10px;
-  min-height: 56px;
-}
-.mirror-cloud img {
-  width: var(--sz, 34px);
-  height: var(--sz, 34px);
-  filter: drop-shadow(0 3px 7px rgba(0, 0, 0, 0.6));
-}
-
-/* Deux axes, deux signes : vers toi, ou de côté. Un simple trait court suffit —
-   une ligne sur toute la largeur se lit comme une bordure, pas comme un axe. */
-.mirror-axis {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 16px;
-  opacity: 0.55;
-}
-.mirror-axis span {
-  width: 26px;
-  height: 2px;
-  background: var(--c-line-strong);
-}
-.mirror-axis i {
-  width: 9px; height: 9px;
-  border-top: 2px solid var(--c-text-dim);
-  border-right: 2px solid var(--c-text-dim);
-}
-.mirror-axis--in i { transform: rotate(-45deg); }
-.mirror-axis--out i { transform: rotate(135deg); }
-
-.mirror-empty {
-  display: grid;
-  place-items: center;
-  min-height: 40vh;
-  opacity: 0.35;
-}
-.mirror-empty img { width: 64px; height: 64px; }
+/* ── Le miroir ────────────────────────────────────────────────────────────
+   Le miroir a déménagé dans `miroir.css` : il est devenu un portrait entier,
+   avec ses graphes, ses figures et ses manques — et ses anciens nuages d'avis
+   ne servaient plus à rien. Ce qui reste ici, c'est le portail : la section
+   `#mirror` est remplie par `miroir.js`, jamais par ce fichier. */
 
 /* ── L'attribution : le seul texte de la page ────────────────────────────── */
 

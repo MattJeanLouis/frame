@@ -18,12 +18,15 @@ commande ; les emoji restent un langage d'expression et de thème, plus une
 décoration.
 
 Deux présentations : **Explorer** (le catalogue) et **Moments** (le fil vertical).
+Trois écrans personnels : **Ma liste** (ce qu'on a marqué, organisé), **Mon
+miroir** (ce que ces marques disent de tes goûts) et **Soirée** (choisir à
+plusieurs).
 
 Répartition des rôles entre les deux chantiers qui avancent en parallèle :
 
 | Chantier | Périmètre | Fichiers |
 |---|---|---|
-| **Fonctionnel** | recherche, filtres, pagination, fiches, lecture, stockage | `card.js`, `discovery.js`, `topics.js`, `collections.js` |
+| **Fonctionnel** | recherche, filtres, pagination, fiches, lecture, stockage, miroir | `card.js`, `discovery.js`, `topics.js`, `collections.js`, `miroir.js`, `src/miroir.js` |
 | **Direction artistique** | mise en page, couleur, typographie, densité | `direction.css`, `catalogue.css` |
 
 Règle de travail : **garder les évolutions métier indépendantes de la couche DA.**
@@ -75,6 +78,13 @@ Chaque ligne ci-dessous a été éprouvée dans Chrome, pas seulement relue.
 - **Téléphone (390 × 844)** : aucun élément ne dépasse, aucune cible sous 32 px,
   en-tête et outils sur 174 px, panneau de filtres en dialogue modal qui tient
   dans l'écran.
+
+### Le miroir
+
+Un portrait calculé à partir des marques : figures de geste, rythme sur douze
+mois, territoires par genre, ciel de décennies, écart au public, signature
+d'emoji et mots employés — et une section « ce qui manque » qui dit ce que le
+miroir ignore, combien, et ce que le combler donnerait. Voir la section 8.
 
 ### Tests
 
@@ -376,7 +386,103 @@ grille à deux colonnes, fiche à 44 px par état.
 
 ---
 
-## 8. Comment on vérifie
+## 8. Le miroir : ce que tes gestes disent de tes goûts
+
+Matt : « concentre-toi sur la page Mon miroir pour véritablement montrer les
+statistiques de tes films — de beaux graphes, des KPI, et des explications —
+en prenant en compte que je n'ai pas complètement tout rempli. »
+
+### Le problème, avant le dessin
+
+Le miroir ne montrait que deux nuages d'emoji : ce que Matt ajoutait aux
+propositions de TMDB, et ce qu'il en retirait. C'était juste, et c'était tout —
+aucun moyen de voir sa culture, son rythme, ses territoires.
+
+Mais la vraie difficulté n'était pas là. Elle était dans la deuxième moitié de
+sa phrase : **son carnet est incomplet, et il le restera.** Sur un vrai carnet,
+la plupart des films marqués n'ont ni avis ni commentaire, et une partie des
+marques date d'avant qu'on garde les horodatages. Un miroir qui fait comme si
+tout était rempli est un miroir qui ment — et un miroir qui se plaint d'être
+incomplet est un miroir qui reproche.
+
+### La règle qui gouverne tout
+
+Chaque mesure sort avec **son effectif**, et rien ne conclut sous quatre films :
+en dessous, deux films font une tendance et trois font une opinion. Une section
+sans matière ne s'affiche pas du tout. Et ce qui manque est dit **une seule
+fois**, dans « ce qui manque », avec ce que le combler donnerait.
+
+C'est le cœur du travail : transformer l'incomplétude en contenu. « Je pourrais
+te dire combien de jours tu as passés dans le noir — il me manque la durée de
+34 films » est plus honnête, et plus intéressant, qu'un total calculé sur un
+tiers des données.
+
+### Les graphes sont faits de films
+
+C'est la réponse à l'anti-référence « tableau de bord ». Un histogramme de
+barres grises ne dit rien de cette application-ci ; ici :
+
+- les **territoires** sont des bandes d'affiches, une par genre, avec une jauge
+  d'amour qui se tait quand il n'y a pas assez de films jugés ;
+- les **années** sont un ciel d'affiches : une tour par décennie, chaque tour
+  proportionnelle au nombre réel et plafonnée, avec le compte écrit en clair ;
+- le **rythme** est un graphe de douze mois, mois vides compris — un mois vide
+  est une information, et un histogramme qui saute les mois vides invente une
+  régularité ;
+- les **figures** sont une planche-contact : des cellules séparées par un fil de
+  1 px, pas des cartes arrondies à ombre.
+
+Et partout, les affiches sont des portes : on ouvre une fiche par-dessus le
+miroir, on marque, on revient — et les chiffres ont bougé.
+
+### La ligne entre chiffre et jugement
+
+Les chiffres comptent des **gestes** : films marqués, avis posés, mots écrits,
+temps passé, coups de cœur. Jamais des films jugés. Il n'y a pas de pourcentage
+de correspondance, pas de note de FRAME, pas de score. La seule comparaison de
+la page porte sur Matt : l'écart entre la note **publique** de TMDB et ce qu'il
+en a dit — ses secrets (des coups de cœur que presque personne n'a vus) et ses
+dissidences (des films que le public porte haut et qu'il n'a pas aimés). Aucun
+des deux n'est une faute, et la page le dit.
+
+Le principe 5 de `CLAUDE.md` a été révisé en conséquence : la ligne n'est plus
+« jamais de chiffres » mais « jamais de jugement ».
+
+### Ce qui est vérifié
+
+Un vrai carnet fabriqué à partir de **61 films TMDB réels**, volontairement à
+trous : 40 films marqués sans avis, 20 jugés sans une ligne, 10 durées
+manquantes, 42 films sans leurs mots-clés, 11 gestes sans date. Les effectifs
+affichés sont comparés à un oracle calculé dans Node **avec le même module** que
+l'application : si l'écran compte autre chose que le calcul, l'un des deux ment.
+
+Éprouvés aussi : la fiche qui s'ouvre **au-dessus** du miroir et Échap qui la
+ferme sans fermer le miroir, la place conservée au retour, l'action qui montre
+son avancement (« 6 / 10 ») et le manque qui **disparaît** une fois comblé,
+aucune classe CSS sans règle, aucune affiche invisible, le miroir vide qui se dit
+vide, et sur téléphone : aucun débordement, aucune cible sous 32 px, douze mois
+sur la largeur.
+
+Trois défauts trouvés **en regardant les captures**, pas en lisant les mesures :
+« 1 j 18 h » se coupait en deux, un genre s'affichait en identifiant brut
+(« Ton territoire, c'est 12. » — la table est un `Map`, le module lisait un
+objet), et deux titres de section restaient affichés au-dessus d'un nuage vide.
+
+### Ce qui reste ouvert
+
+- **Le temps passé n'est exact que si les durées sont connues.** Il ne s'affiche
+  qu'au-delà de la moitié des films vus, et une durée que TMDB ne publie pas est
+  notée comme telle pour ne pas rester un manque éternel.
+- **Le rythme ne remonte qu'à douze mois.** Les gestes plus anciens comptent
+  dans les totaux et disparaissent du graphe.
+- **Les mots sont comptés, pas compris** : pas de thèmes, pas de sentiments, une
+  liste de mots vides en français et rien de plus.
+- **Les territoires reposent sur UN genre principal par film** — TMDB en donne
+  plusieurs, un film à trois genres compte dans les trois.
+
+---
+
+## 9. Comment on vérifie
 
 Ce qui compte n'est pas qu'un test passe, c'est que l'application fasse ce qu'on
 croit qu'elle fait. Les scripts de `.superpowers/verify/` pilotent Chrome en
@@ -393,11 +499,34 @@ node verif-soiree.mjs             # le mode Soirée, à DEUX navigateurs
 node verif-publie.mjs             # la version construite, servie comme Netlify
 node verif-profil.mjs             # la synchronisation, entre DEUX navigateurs
 node verif-watchlist.mjs          # export, import, lien de partage à TROIS navigateurs
+node graine-miroir.mjs            # fabrique un vrai carnet à trous (61 films TMDB)
+node verif-miroir.mjs             # le miroir, chiffre par chiffre, contre un oracle Node
 ```
 
 `verif-publie.mjs` a besoin de `npm run build` puis `npm run servir-dist` : il
 éprouve `dist/`, pas les sources, et vérifie en particulier que la clé TMDB ne
 part jamais dans la page.
+
+`verif-miroir.mjs` vise les sources par défaut, et la version construite avec
+`FRAME_BASE=http://127.0.0.1:8094/` — c'est le seul moyen de savoir si le miroir
+survit au passage par le relais.
+
+### Trois scripts de vérification sont périmés
+
+Constaté le 20 septembre 2026, et **vérifié contre le commit précédent** pour
+être sûr que ce n'était pas une régression fraîche : `verif-signifiants.mjs`,
+`verif-affordances.mjs` et `verif-reactif.mjs` éprouvent le **survol d'avant**.
+
+- Ils attendent la classe `.card.is-peeking` et le diaporama `card.__deck`.
+  Or `is-peeking` n'est **plus posée nulle part** dans `card.js` : le survol
+  construit maintenant un `.catalogue-preview` (classe `has-preview`). Les six
+  règles CSS `.card.is-peeking` de `card.css` sont donc **mortes**.
+- Ils cliquent aussi `#wall .card`, alors que l'écouteur est sur le bouton
+  enfant `.card__open` : un clic posé sur le parent ne déclenche pas l'enfant.
+  C'est déjà corrigé dans `verif-liste.mjs`.
+
+Ces trois scripts sont à réécrire pour le survol actuel — ou à supprimer. Les
+six règles mortes relèvent de la couche DA, pas du fonctionnel.
 
 `verif-soiree.mjs` a besoin de deux Chrome sur des ports de débogage différents (9222 et
 9223) et de profils séparés : sans deux stockages distincts, on ne teste qu'un joueur qui

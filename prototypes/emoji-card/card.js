@@ -19,6 +19,10 @@ import { selectMovies } from '../../src/engine.js';
 import { initRoom, ouvrirRoom, fermerRoom } from './soiree.js';
 import { initProfil, ouvrirProfil, fermerProfil, profilCourant } from './profil.js';
 import { initListe, ouvrirListe, fermerListe, estOuverte as listeOuverte } from './liste.js';
+import {
+  initMiroir, ouvrirMiroir, fermerMiroir,
+  rafraichir as rafraichirLeMiroir, miroirOuvert
+} from './miroir.js';
 
 const STORE_KEY = 'frame.v2';
 /* Les six états, sur un seul axe : ce que tu dis d'un film, en un mot, d'une
@@ -201,6 +205,18 @@ function rememberFilm(film) {
     vote_count: film.vote_count || 0,
     popularity: film.popularity || 0,
     overview: film.overview || '',
+    /* Ce que le miroir lit et que la fiche n'a pas toujours : on GARDE ce qu'une
+       ouverture en grand a appris, sinon un simple re-marquage effacerait la
+       durée, le réalisateur et les mots-clés — et le portrait rétrécirait à
+       chaque fois. */
+    runtime: film.runtime || ancien?.runtime || null,
+    /* « On a cherché la durée et TMDB n'en a pas » : sans cette mémoire, un
+       simple re-marquage ferait réapparaître un manque déjà comblé, et le
+       miroir réclamerait pour toujours quelque chose qui n'existe pas. */
+    sansDuree: film.runtime ? undefined : ancien?.sansDuree,
+    genres: Array.isArray(film.genres) && film.genres.length ? film.genres : ancien?.genres,
+    director: film.director || ancien?.director || '',
+    countries: Array.isArray(film.countries) && film.countries.length ? film.countries : ancien?.countries,
     keywords: Array.isArray(film.keywords) && film.keywords.length ? film.keywords : ancien?.keywords,
     // Quand il est entré dans la liste : c'est l'ordre naturel d'une liste.
     at: ancien?.at || Date.now()
@@ -3610,6 +3626,13 @@ function closeCard() {
   current = null;
   // L'état a pu changer dans la fiche : on remet la présentation à jour.
   if (film) refresh(film);
+  /* Le miroir était dessous : on le recalcule, et on lui rend l'écran entier.
+     C'est ce qui fait bouger les chiffres sous les yeux de celui qui vient d'y
+     marquer un film — le retour immédiat, appliqué au portrait lui-même. */
+  if (miroirOuvert()) {
+    cardEl_.classList.remove('card--dessus');
+    rafraichirLeMiroir();
+  }
 }
 
 /* ── L'éclat : le retour immédiat, sans un mot ────────────────────────────── */
@@ -3626,77 +3649,113 @@ function spark(event, emoji) {
 
 /* ── Le miroir ────────────────────────────────────────────────────────────── */
 
-/** Un nuage d'emoji dont la taille porte la fréquence. Aucun chiffre. */
-function cloud(entries) {
-  const wrap = document.createElement('div');
-  wrap.className = 'mirror-cloud';
-  const max = entries[0][1];
-  for (const [stickerId, count] of entries) {
-    const sticker = STICKER_BY_ID.get(stickerId);
-    if (!sticker) continue;
-    const img = emojiImg(sticker.emoji);
-    img.style.setProperty('--sz', Math.round(28 + (count / max) * 34) + 'px');
-    wrap.append(img);
-  }
-  return wrap;
+/**
+ * Le miroir est devenu un écran entier : il vit dans `miroir.js`, avec ses
+ * graphes, ses figures et ses manques. Ici on ne garde que ce que lui seul peut
+ * savoir — l'état local, la dérivation du nom d'un film, et de quoi ouvrir une
+ * fiche par-dessus.
+ */
+function initLeMiroir() {
+  initMiroir({
+    racine: mirrorEl,
+    etat: () => ({
+      marks: state.marks, films: state.mesFilms,
+      reactions: state.reactions, comments: state.comments, horodatages: state.horodatages
+    }),
+    genres: () => GENRE_PAR_ID,
+    proposed: film => proposed(film),
+    sticker: id => STICKER_BY_ID.get(id),
+    emoji: (signe, classe) => emojiImg(signe, classe),
+    ouvrirFiche: cle => ouvrirFicheDepuisLeMiroir(cle),
+    completer: (cles, avance) => completerPourLeMiroir(cles, avance),
+    /* Sans accès à TMDB, l'action de complétion ne peut rien apporter : on ne
+       la propose pas plutôt que de la laisser échouer en silence. */
+    reseau: () => state.live,
+    annoncer: message => announce(message)
+  });
 }
 
-function openMirror() {
-  const added = new Map();
-  const removed = new Map();
-
-  for (const [id, own] of Object.entries(state.reactions)) {
-    const film = state.films.get(id);
-    if (!film || !own.length) continue;
-    const base = proposed(film);
-    for (const stickerId of own) if (!base.includes(stickerId)) added.set(stickerId, (added.get(stickerId) || 0) + 1);
-    for (const stickerId of base) if (!own.includes(stickerId)) removed.set(stickerId, (removed.get(stickerId) || 0) + 1);
-  }
-
-  const sort = map => [...map.entries()].sort((a, b) => b[1] - a[1]);
-  const inner = document.createElement('div');
-  inner.className = 'mirror-inner';
-
-  const added_ = sort(added);
-  const removed_ = sort(removed);
-
-  if (!added_.length && !removed_.length) {
-    // Rien à refléter : on le dit avec le miroir lui-même, pas avec une phrase.
-    const none = document.createElement('div');
-    none.className = 'mirror-empty';
-    none.append(emojiImg('🪞'));
-    inner.append(none);
-  } else {
-    const rows = [];
-    if (added_.length) rows.push(['in', added_]);
-    if (removed_.length) rows.push(['out', removed_]);
-    // Une rangée sans rien se lirait comme un défaut : on ne la montre pas.
-    for (const [direction, entries] of rows) {
-      const wrap = document.createElement('div');
-      wrap.className = 'mirror-row';
-      const axis = document.createElement('div');
-      axis.className = 'mirror-axis mirror-axis--' + direction;
-      axis.append(document.createElement('i'), document.createElement('span'));
-      wrap.append(axis, cloud(entries));
-      inner.append(wrap);
-    }
-  }
-
-  const close = document.createElement('button');
-  close.type = 'button';
-  close.className = 'close';
-  close.setAttribute('aria-label', 'Fermer le miroir');
-  close.append(Object.assign(document.createElement('span'), { className: 'cross' }));
-  close.addEventListener('click', closeMirror);
-
-  mirrorEl.replaceChildren(close, inner);
-  mirrorEl.hidden = false;
+/**
+ * Un film à partir de sa clé, même s'il n'est plus en mémoire.
+ *
+ * Le miroir travaille sur les instantanés — tout ce qu'on a marqué, y compris
+ * ce qui n'est plus dans le mur. On reconstruit donc un film à partir de sa
+ * fiche, assez pour ouvrir la carte en grand ; `fetchDetail` la complétera.
+ */
+function filmPour(cle) {
+  const vivant = state.films.get(cle);
+  if (vivant) return vivant;
+  const fiche = state.mesFilms[cle];
+  if (!fiche) return null;
+  return { ...fiche };
 }
 
-function closeMirror() {
-  mirrorEl.hidden = true;
-  mirrorEl.replaceChildren();
+/**
+ * Ce qu'une fiche ouverte en grand a appris, reversé dans l'instantané.
+ *
+ * Sans cela, chaque ouverture referait les mêmes requêtes et le miroir ne
+ * s'améliorerait jamais. On ne touche PAS à l'horodatage : enrichir une fiche
+ * n'est pas un geste de Matt, et le dater ferait croire à une modification
+ * récente lors d'une fusion entre deux appareils.
+ */
+function enrichirInstantane(film) {
+  const fiche = state.mesFilms[keyOf(film)];
+  if (!fiche) return;
+  /* La durée : TMDB ne la publie pas pour tous les films. Quand on a VRAIMENT
+     demandé la fiche et qu'elle n'en porte pas, on le note — sinon ce film
+     resterait éternellement dans « ce qui manque », et le miroir réclamerait
+     sans fin quelque chose qui n'existe pas. On ne le note que si la fiche est
+     bien arrivée : une panne réseau n'est pas une absence de durée. */
+  if (state.live && film.original_title) {
+    if (film.runtime) { fiche.runtime = film.runtime; delete fiche.sansDuree; }
+    else fiche.sansDuree = true;
+  }
+  for (const champ of ['runtime', 'keywords', 'genres', 'director', 'countries', 'vote_average', 'vote_count', 'overview', 'poster_path']) {
+    const valeur = film[champ];
+    if (valeur === undefined || valeur === null || valeur === '') continue;
+    if (Array.isArray(valeur) && !valeur.length) continue;
+    fiche[champ] = valeur;
+  }
 }
+
+/**
+ * Une affiche du miroir ouvre la fiche, PAR-DESSUS lui.
+ *
+ * C'est ce qui empêche le miroir d'être un cul-de-sac : on voit un film dans une
+ * statistique, on l'ouvre, on le marque, on revient — et le miroir a bougé. La
+ * classe `card--dessus` couvre l'écran entier, parce que le miroir occupe déjà
+ * celui-ci et que la fiche se dessinait sinon sous lui.
+ */
+async function ouvrirFicheDepuisLeMiroir(cle) {
+  const film = filmPour(cle);
+  if (!film) { announce('Cette fiche n’est plus là.'); return; }
+  cardEl_.classList.add('card--dessus');
+  await openCard(film);
+  enrichirInstantane(film);
+}
+
+/**
+ * La seule action du miroir qui coûte des requêtes : compléter ce qu'il ignore.
+ *
+ * Elle est déclenchée par un bouton, jamais toute seule — personne n'a envie
+ * qu'une page se mette à télécharger quarante films sans prévenir.
+ */
+async function completerPourLeMiroir(cles, avance) {
+  await mapLimit(cles, 4, async cle => {
+    try {
+      const film = filmPour(cle);
+      if (!film) return;
+      await fetchDetail(film);
+      await fetchKeywords(film);
+      enrichirInstantane(film);
+    } catch { /* un film introuvable ne bloque pas les autres */ }
+    finally { avance?.(); }
+  });
+  saveStore();
+}
+
+const openMirror = () => ouvrirMiroir();
+const closeMirror = () => fermerMiroir();
 
 function announce(text) {
   statusEl.textContent = text;
@@ -3726,6 +3785,7 @@ async function start() {
 
   /* Le miroir n'est plus dans l'en-tête — cinq blocs suffisent — mais il reste
      accessible depuis le profil, là où sont les choses personnelles. */
+  initLeMiroir();
   el('btn-mirror')?.addEventListener('click', openMirror);
 
   /* Le mode Soirée. Il ne connaît du catalogue que ce qu'on lui donne : les
@@ -3844,8 +3904,11 @@ async function start() {
 
   document.addEventListener('keydown', event => {
     if (event.key === 'Escape') {
-      if (!mirrorEl.hidden) { closeMirror(); return; }
+      /* La fiche ouverte DEPUIS le miroir est au-dessus de lui : c'est elle
+         qu'on ferme d'abord, sinon Échap sauterait l'écran qu'on est en train
+         de lire pour rendre au mur. */
       if (!cardEl_.hidden) { closeCard(); return; }
+      if (!mirrorEl.hidden) { closeMirror(); return; }
       if (state.query) {
         state.query = '';
         el('search').value = '';

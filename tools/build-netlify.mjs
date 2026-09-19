@@ -81,8 +81,13 @@ console.log('  ' + total + ' fichiers dans dist/');
 console.log('  clé TMDB dans le paquet : ' +
   (existsSync(join(DIST, 'config.local.js')) ? '⚠ PRÉSENTE — à retirer !' : 'non (le relais s’en charge)'));
 
-/* Les trois fichiers sans lesquels la page ne démarre pas. */
-const INDISPENSABLES = ['index.html', 'card.js', 'card.css', 'soiree.js', 'src/tmdb.js', 'room/rooms.js', 'styles/tokens.css'];
+/* Les fichiers sans lesquels la page ne démarre pas — ou ne ressemble à rien :
+   une feuille oubliée à la construction ne casse pas le build, elle casse
+   l'écran, et seulement une fois en ligne. */
+const INDISPENSABLES = [
+  'index.html', 'card.js', 'card.css', 'soiree.js', 'miroir.js', 'miroir.css', 'liste.js', 'liste.css',
+  'src/tmdb.js', 'src/miroir.js', 'src/profil.js', 'room/rooms.js', 'styles/tokens.css'
+];
 const manquants = INDISPENSABLES.filter(f => !existsSync(join(DIST, f)));
 if (manquants.length) {
   console.error('  ✗ manquants : ' + manquants.join(', '));

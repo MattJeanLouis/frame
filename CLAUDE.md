@@ -56,7 +56,9 @@ un fond très sombre fait des emoji les **seules lumières de la pièce**.
   contexte, pas un jugement de FRAME.) ;
 - un réseau social ou une messagerie : fil d'actualité, likes, commentaires
   écrits, abonnements ;
-- un tableau de bord : courbes, graphiques, profil chiffré ;
+- un tableau de bord : le profil chiffré d'un utilisateur, des courbes qui
+  pourraient décrire n'importe qui, un score. (Un miroir qui compte des gestes
+  et les explique n'est pas un tableau de bord — voir le principe 5.) ;
 - un sélecteur d'emoji de clavier : une grille de symboles sans conséquence,
   où rien n'indique ce que fait un signe.
 
@@ -82,9 +84,24 @@ un fond très sombre fait des emoji les **seules lumières de la pièce**.
    après avoir touché, on doit voir ce qui s'est passé. Un emoji ambigu est un
    bon signifiant d'expression et un mauvais affordance de commande.
 
-5. **Le miroir, pas le tableau de bord.** On montre ce que tu ressens — des
-   formes, des tailles, des fréquences — jamais des chiffres. Une information
-   qui ne se dessine pas en emoji n'a pas sa place.
+5. **Le miroir, pas le tableau de bord.** *Révisé le 20 septembre 2026.* Matt a
+   demandé des graphes et des chiffres pour « mieux cerner sa culture et ses
+   goûts ». La ligne n'est donc plus « jamais de chiffres » mais **jamais de
+   jugement**, et elle se tient ainsi :
+   - un chiffre ne sort **jamais seul** — il porte son effectif et la phrase qui
+     l'explique ;
+   - les chiffres comptent des **gestes** (films marqués, avis posés, mots
+     écrits, temps passé), jamais des films jugés. Pas de pourcentage de
+     correspondance, pas de note de FRAME, pas de score ;
+   - les graphes sont **faits de films** : un histogramme est une pile
+     d'affiches, une barre est une bande d'affiches, une jauge est une longueur.
+     Un graphe qu'on pourrait mettre dans n'importe quelle application ne dit
+     rien de celle-ci ;
+   - **sous quatre films, on ne conclut pas** : la mesure s'affiche en le disant,
+     ou pas du tout ;
+   - une section sans matière **ne s'affiche pas** — pas de cadre vide, pas de
+     « pas de données ». Ce qui manque est dit une fois, dans « ce qui manque »,
+     avec ce que le combler donnerait.
 
 ### Accessibility
 

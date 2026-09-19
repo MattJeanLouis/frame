@@ -1,0 +1,746 @@
+/* ── Le miroir ───────────────────────────────────────────────────────────────
+   Un portrait fait de films. Les graphes ne sont pas des barres grises : les
+   tours d'un histogramme sont des affiches empilées, les bandes d'un territoire
+   sont des affiches, et une jauge n'affiche jamais son pourcentage — une
+   longueur se lit, un score se compare.
+
+   Trois principes de forme, tenus partout :
+     · des aplats et des fils de 1 px, jamais des cartes arrondies à ombre ;
+     · la typographie porte le sens : Syne pour les figures, Instrument Serif
+       pour les phrases, Instrument Sans pour tout le reste ;
+     · l'ambre est réservé à ce qui compte, et il n'apparaît jamais deux fois
+       au même niveau de lecture. */
+
+body.miroir-ouvert { overflow: hidden; }
+
+/* Une fiche ouverte depuis une affiche du miroir passe AU-DESSUS de lui et
+   couvre l'écran entier : le miroir occupe déjà tout, et la fiche se dessinait
+   sinon derrière. La fermer rend le miroir, recalculé. */
+#card.card--dessus { inset: 0; z-index: 90; }
+
+#mirror {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  background: var(--c-bg);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scroll-behavior: smooth;
+}
+#mirror[hidden] { display: none; }
+
+.miroir {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 0 clamp(18px, 4vw, 64px) clamp(64px, 9vw, 120px);
+}
+
+/* L'entrée : chaque bloc monte à son tour. Un seul mouvement bien orchestré
+   vaut mieux que trente micro-animations. */
+@keyframes monte {
+  from { opacity: 0; transform: translateY(16px); }
+}
+.miroir > *:not(.sommaire) {
+  animation: monte 620ms var(--e-expo) both;
+  animation-delay: calc(var(--i, 0) * 55ms);
+}
+
+/* ── Le sommaire ──────────────────────────────────────────────────────────── */
+
+.sommaire {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 62px;
+  background: var(--c-bg);
+  border-bottom: 1px solid var(--c-line);
+}
+.sommaire__marque {
+  margin: 0;
+  font: 700 10px var(--ff-display);
+  letter-spacing: var(--ls-brand);
+  text-transform: uppercase;
+  color: var(--c-accent);
+  white-space: nowrap;
+}
+.sommaire__fermer {
+  display: grid;
+  place-items: center;
+  width: 44px; height: 44px;
+  margin-left: -10px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--c-text-dim);
+  cursor: pointer;
+}
+.sommaire__fermer:hover { color: var(--c-text); }
+.sommaire__fermer .croix { position: relative; width: 15px; height: 15px; }
+.sommaire__fermer .croix::before,
+.sommaire__fermer .croix::after {
+  content: "";
+  position: absolute;
+  inset: 7px 0 auto 0;
+  height: 1.5px;
+  background: currentColor;
+}
+.sommaire__fermer .croix::before { transform: rotate(45deg); }
+.sommaire__fermer .croix::after { transform: rotate(-45deg); }
+/* Le sommaire défile : sans un bord qui s'efface, rien ne dit qu'il y a une
+   suite — et six sections dont on n'en voit que trois sont trois sections. */
+.sommaire__liens {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(90deg, #000 0, #000 88%, transparent 100%);
+  mask-image: linear-gradient(90deg, #000 0, #000 88%, transparent 100%);
+}
+.sommaire__liens::-webkit-scrollbar { display: none; }
+.sommaire__lien {
+  min-height: 44px;
+  padding: 0 12px;
+  border: 0;
+  background: none;
+  color: var(--c-text-dim);
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.sommaire__lien:hover { color: var(--c-accent); }
+
+/* ── L'ouverture ──────────────────────────────────────────────────────────── */
+
+.miroir__ouverture {
+  padding: clamp(40px, 7vw, 88px) 0 clamp(28px, 4vw, 48px);
+  max-width: 900px;
+}
+.miroir__eyebrow {
+  margin: 0 0 18px;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--c-accent);
+}
+.miroir__titre {
+  margin: 0;
+  font: 700 clamp(30px, 5.2vw, 58px) / 1.03 var(--ff-display);
+  letter-spacing: -0.035em;
+}
+.miroir__chapeau {
+  margin: 22px 0 0;
+  max-width: 54ch;
+  font-family: 'Instrument Serif', serif;
+  font-size: clamp(17px, 2.1vw, 23px);
+  line-height: 1.42;
+  color: var(--c-text);
+}
+.miroir__chapeau em { font-style: italic; color: var(--c-accent); }
+.miroir__action {
+  margin-top: 30px;
+  min-height: 48px;
+  padding: 0 22px;
+  border: 1px solid var(--c-accent);
+  border-radius: 4px;
+  background: none;
+  color: var(--c-accent);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+.miroir__action:hover { background: var(--c-accent); color: var(--c-accent-ink); }
+
+/* La profondeur : trois longueurs mesurées sur le même tout, aucun pourcentage.
+   Un entonnoir se lit ; trois parts qui se partagent la largeur, non. */
+.remplissage {
+  display: grid;
+  gap: 9px;
+  margin-top: clamp(30px, 4vw, 46px);
+  max-width: 540px;
+}
+.remplissage__ligne {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(60px, 132px) 44px;
+  align-items: center;
+  gap: 14px;
+}
+.remplissage__nom { font-size: 11.5px; color: var(--c-text-dim); }
+.remplissage__rail { height: 6px; background: var(--c-line); }
+.remplissage__part {
+  display: block;
+  height: 100%;
+  width: calc(var(--part, 0) * 100%);
+  background: var(--c-line-strong);
+  transform-origin: left center;
+  animation: pousse-largeur 900ms var(--e-expo) both;
+}
+@keyframes pousse-largeur {
+  from { transform: scaleX(0); }
+}
+.remplissage__ligne--marque .remplissage__part { background: var(--c-text-dim); }
+.remplissage__ligne--avis .remplissage__part { background: color-mix(in oklab, var(--c-accent) 55%, transparent); }
+.remplissage__ligne--ecrit .remplissage__part { background: var(--c-accent); }
+.remplissage__n {
+  font: 600 12px var(--ff-text);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* ── Le bandeau des figures ───────────────────────────────────────────────── */
+
+/* Un planche-contact : des cellules séparées par un fil, pas des cartes. */
+.figures {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(158px, 1fr));
+  gap: 1px;
+  margin: clamp(24px, 4vw, 44px) 0 0;
+  background: var(--c-line);
+  border: 1px solid var(--c-line);
+}
+.figure {
+  background: var(--c-bg);
+  padding: 22px 20px 24px;
+}
+.figure__etiquette {
+  margin: 0;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--c-text-dim);
+}
+.figure__valeur {
+  margin: 12px 0 0;
+  font: 700 clamp(26px, 3.4vw, 40px) / 1 var(--ff-display);
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
+  color: var(--c-text);
+  /* « 1 j 18 h » se coupait en deux : une valeur qui passe à la ligne se lit
+     comme deux valeurs. */
+  white-space: nowrap;
+}
+.figure__dit {
+  margin: 10px 0 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--c-text-dim);
+  max-width: 26ch;
+}
+/* Le temps passé est la seule figure qui soit une émotion : elle a le droit à
+   l'ambre, et elle seule. */
+.figure--temps .figure__valeur { color: var(--c-accent); }
+
+/* ── Les blocs ────────────────────────────────────────────────────────────── */
+
+.miroir__bloc {
+  padding: clamp(44px, 6vw, 78px) 0 0;
+  margin-top: clamp(44px, 6vw, 78px);
+  border-top: 1px solid var(--c-line);
+}
+/* Les constats ne sont pas une section de plus : ils commentent l'ouverture et
+   les figures, donc ils restent collés à elles, sans filet de séparation. */
+.miroir__bloc--constats { border-top: 0; padding-top: 0; margin-top: clamp(28px, 4vw, 52px); }
+/* Celui-ci demande quelque chose : son filet est plus franc. */
+.miroir__bloc--manque { border-top-color: var(--c-line-strong); }
+.bloc-titre { max-width: 74ch; margin-bottom: clamp(22px, 3vw, 34px); }
+.bloc-titre__nom {
+  margin: 0;
+  font: 700 clamp(20px, 2.4vw, 28px) / 1.15 var(--ff-display);
+  letter-spacing: -0.025em;
+}
+.bloc-titre__dit {
+  margin: 10px 0 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--c-text-dim);
+  max-width: 68ch;
+}
+.miroir__note {
+  margin: 18px 0 0;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: color-mix(in oklab, var(--c-text-dim) 78%, transparent);
+  max-width: 72ch;
+}
+.miroir__lien {
+  margin-top: 20px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--c-accent);
+  font-size: 11.5px;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+.miroir__lien:hover { text-decoration: underline; }
+
+/* ── Les constats ─────────────────────────────────────────────────────────── */
+
+.constats { margin: 0; padding: 0; list-style: none; }
+.constat {
+  padding: 20px 0;
+  border-top: 1px solid var(--c-line);
+}
+.constat:first-child { border-top: 0; padding-top: 0; }
+.constat__texte {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin: 0;
+  font-family: 'Instrument Serif', serif;
+  font-size: clamp(18px, 2.2vw, 25px);
+  line-height: 1.28;
+  max-width: 40ch;
+}
+.constat__emoji { width: 22px; height: 22px; flex: 0 0 auto; transform: translateY(3px); }
+.constat__detail {
+  margin: 8px 0 0 34px;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--c-text-dim);
+  max-width: 62ch;
+}
+
+/* ── Le rythme ────────────────────────────────────────────────────────────── */
+
+.rythme {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: clamp(4px, 1vw, 14px);
+  height: clamp(150px, 20vw, 220px);
+}
+.rythme__col {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+.rythme__n {
+  font: 600 10px var(--ff-text);
+  font-variant-numeric: tabular-nums;
+  color: var(--c-text-dim);
+  min-height: 13px;
+  transition: color 200ms var(--e-out);
+}
+.rythme__rail {
+  display: flex;
+  align-items: flex-end;
+  height: 100%;
+  min-height: 0;
+  border-bottom: 1px solid var(--c-line-strong);
+}
+.rythme__barre {
+  width: 100%;
+  height: calc(var(--h, 0) * 100%);
+  min-height: 0;
+  background: color-mix(in oklab, var(--c-accent) 46%, transparent);
+  transform-origin: bottom center;
+  animation: pousse 700ms var(--e-expo) both;
+  animation-delay: calc(var(--i, 0) * 40ms + 120ms);
+  transition: background 220ms var(--e-out);
+}
+@keyframes pousse { from { transform: scaleY(0); } }
+.rythme__mois {
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  color: var(--c-text-dim);
+  white-space: nowrap;
+}
+.rythme__col:hover .rythme__barre { background: color-mix(in oklab, var(--c-accent) 60%, transparent); }
+.rythme__col:hover .rythme__n { color: var(--c-text); }
+.rythme__col[aria-pressed='true'] .rythme__barre { background: var(--c-accent); }
+.rythme__col[aria-pressed='true'] .rythme__mois { color: var(--c-accent); }
+.rythme__col[aria-pressed='true'] .rythme__n { color: var(--c-text); }
+.rythme__tiroir {
+  margin-top: 26px;
+  padding-top: 20px;
+  border-top: 1px solid var(--c-line);
+  animation: monte 380ms var(--e-expo) both;
+}
+.rythme__entete {
+  margin: 0 0 14px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--c-accent);
+}
+
+/* ── Les affiches ─────────────────────────────────────────────────────────── */
+
+.bande {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(90deg, #000 0, #000 92%, transparent 100%);
+  mask-image: linear-gradient(90deg, #000 0, #000 92%, transparent 100%);
+}
+.bande::-webkit-scrollbar { display: none; }
+.bande .affiche { flex: 0 0 auto; width: 48px; }
+.bande__plus {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  align-self: stretch;
+  width: 48px;
+  min-height: 72px;
+  border: 1px solid var(--c-line-strong);
+  border-radius: 3px;
+  background: none;
+  color: var(--c-text-dim);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.bande__plus:hover { border-color: var(--c-accent); color: var(--c-accent); }
+
+.affiche {
+  position: relative;
+  display: block;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+.affiche img {
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+  border-radius: 3px;
+  background: var(--c-surface);
+  /* L'image n'apparaît qu'une fois chargée — mais l'échec vaut chargement, et
+     la règle existe. Une classe sans règle CSS a déjà rendu tout un mur
+     invisible dans ce prototype. */
+  opacity: 0;
+  transition: opacity 340ms var(--e-out);
+}
+.affiche img.is-prete { opacity: 1; }
+.affiche__nom {
+  display: block;
+  margin-top: 5px;
+  font-size: 10px;
+  line-height: 1.3;
+  color: var(--c-text-dim);
+  text-align: left;
+}
+/* Une affiche de tour ne bouge pas : faire sauter une brique d'un histogramme
+   ferait trembler tout le graphe. */
+.affiche--pile { border-radius: 2px; }
+.affiche--pile img { border-radius: 2px; }
+.affiche__titre {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  padding: 6px;
+  border-radius: 3px;
+  background: var(--c-surface);
+  color: var(--c-text-dim);
+  font-size: 9.5px;
+  line-height: 1.25;
+  text-align: center;
+  overflow: hidden;
+}
+@media (hover: hover) {
+  .affiche { transition: transform 260ms var(--e-out); }
+  .affiche:hover { transform: translateY(-4px); z-index: 2; }
+  .affiche--pile:hover { transform: none; }
+  .affiche:hover img { box-shadow: 0 0 0 1.5px var(--c-accent), 0 10px 24px rgba(0, 0, 0, 0.6); }
+  .affiche:hover .affiche__nom { color: var(--c-text); }
+}
+
+/* ── Les territoires ──────────────────────────────────────────────────────── */
+
+.terres { display: block; }
+.terre {
+  display: grid;
+  grid-template-columns: 176px minmax(0, 1fr);
+  gap: 10px 22px;
+  align-items: start;
+  padding: 20px 0;
+  border-top: 1px solid var(--c-line);
+}
+.terre__tete { grid-column: 1; }
+.terre__nom {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+}
+.terre__emoji { width: 17px; height: 17px; flex: 0 0 auto; }
+.terre__n {
+  margin: 6px 0 0 25px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--c-text-dim);
+}
+/* La bande occupe la première rangée, la jauge la seconde : spanning les
+   deux faisait tomber la jauge sous toute la hauteur de la bande. */
+.bande--terre { grid-column: 2; grid-row: 1; }
+.jauge { grid-column: 2; grid-row: 2; }
+.jauge__rail { height: 4px; background: var(--c-line); }
+.jauge__plein {
+  display: block;
+  height: 100%;
+  width: calc(var(--part, 0) * 100%);
+  background: var(--c-accent);
+  transform-origin: left center;
+  animation: pousse-largeur 900ms var(--e-expo) both;
+}
+.jauge__dit {
+  margin: 9px 0 0;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--c-text-dim);
+}
+.jauge--muette .jauge__rail { background: repeating-linear-gradient(90deg, var(--c-line) 0 6px, transparent 6px 12px); }
+.jauge--muette .jauge__dit { color: color-mix(in oklab, var(--c-text-dim) 62%, transparent); }
+
+/* ── Le ciel d'affiches ───────────────────────────────────────────────────── */
+
+.ciel {
+  display: flex;
+  align-items: flex-end;
+  gap: clamp(6px, 1.6vw, 20px);
+}
+.ciel__tour {
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+}
+.ciel__n {
+  margin: 0 0 8px;
+  font: 700 clamp(13px, 1.6vw, 17px) var(--ff-display);
+  font-variant-numeric: tabular-nums;
+  color: var(--c-text);
+}
+.ciel__pile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  width: 100%;
+}
+.ciel__pile .affiche { width: 100%; max-width: 66px; }
+.ciel__reste {
+  font-size: 9.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--c-text-dim);
+}
+.ciel__decennie {
+  margin: 12px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--c-line-strong);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  font-variant-numeric: tabular-nums;
+  color: var(--c-text-dim);
+  white-space: nowrap;
+}
+
+/* ── Toi et le public ─────────────────────────────────────────────────────── */
+
+.face { margin-bottom: 34px; }
+.face__duo {
+  display: flex;
+  gap: 1px;
+  background: var(--c-line);
+  border: 1px solid var(--c-line);
+  max-width: 520px;
+}
+.face__camp { flex: 1 1 0; background: var(--c-bg); padding: 20px; }
+.face__etiquette {
+  margin: 0;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--c-text-dim);
+}
+.face__note {
+  margin: 10px 0 0;
+  font: 700 clamp(26px, 3.4vw, 40px) / 1 var(--ff-display);
+  font-variant-numeric: tabular-nums;
+}
+.face__dit { margin: 12px 0 0; font-size: 11.5px; color: var(--c-text-dim); }
+
+.monde-groupe { padding: 20px 0; border-top: 1px solid var(--c-line); }
+.monde-groupe__tete { display: flex; align-items: center; }
+.monde-groupe__nom {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 500;
+}
+.monde-groupe__emoji { width: 18px; height: 18px; flex: 0 0 auto; }
+/* Tes secrets et tes dissidences sont les deux groupes qui t'apprennent quelque
+   chose ; le consensus est le décor. L'ambre le dit sans une phrase de plus. */
+.monde-groupe--secrets .monde-groupe__nom,
+.monde-groupe--dissidences .monde-groupe__nom { color: var(--c-accent); }
+.monde-groupe--consensus .monde-groupe__nom { color: var(--c-text-dim); }
+.monde-groupe__dit {
+  margin: 8px 0 16px;
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--c-text-dim);
+  max-width: 70ch;
+}
+
+/* ── La signature et les mots ─────────────────────────────────────────────── */
+
+.signe-groupe { padding: 22px 0; border-top: 1px solid var(--c-line); }
+.signe-groupe__nom {
+  margin: 0;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--c-accent);
+}
+.signe-groupe--retires .signe-groupe__nom { color: var(--c-text-dim); }
+/* Les mots ne sont pas un troisième nuage de signes : ils changent de nature, et
+   le filet plus franc le dit. */
+.signe-groupe--mots { border-top-color: var(--c-line-strong); }
+.signe-groupe__dit {
+  margin: 9px 0 0;
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--c-text-dim);
+  max-width: 68ch;
+}
+.nuage {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 14px 18px;
+  margin-top: 18px;
+}
+.nuage__item { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.nuage__emoji { width: var(--sz, 30px); height: var(--sz, 30px); }
+.nuage__n {
+  font-size: 9.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--c-text-dim);
+}
+
+.mots {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 16px;
+  margin-top: 20px;
+  max-width: 78ch;
+}
+.mots__mot {
+  font-family: 'Instrument Serif', serif;
+  font-size: calc(13px + var(--poids, 0) * 20px);
+  line-height: 1.15;
+  color: color-mix(in oklab, var(--c-text) calc(38% + var(--poids, 0) * 62%), var(--c-text-dim));
+}
+.mots__mot:first-child { color: var(--c-accent); }
+.mots__n {
+  font-family: var(--ff-text);
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+  color: var(--c-text-dim);
+  margin-left: 2px;
+}
+
+/* ── Ce qui manque ────────────────────────────────────────────────────────── */
+
+.manques { margin: 0; padding: 0; list-style: none; }
+.manque { padding: 22px 0; border-top: 1px solid var(--c-line); }
+.manque:first-child { border-top: 0; padding-top: 0; }
+.manque__tete { display: flex; gap: 20px; align-items: flex-start; }
+.manque__n {
+  flex: 0 0 auto;
+  width: 2.6ch;
+  margin: 0;
+  font: 700 clamp(26px, 3.4vw, 38px) / 1 var(--ff-display);
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
+  color: var(--c-accent);
+}
+.manque__corps { min-width: 0; }
+.manque__titre { margin: 4px 0 0; font-size: 14px; font-weight: 500; }
+.manque__dit { margin: 8px 0 0; font-size: 12px; line-height: 1.55; color: var(--c-text-dim); max-width: 66ch; }
+.manque__promesse {
+  margin: 8px 0 0;
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: color-mix(in oklab, var(--c-accent) 72%, var(--c-text-dim));
+  max-width: 66ch;
+}
+.bande--manque { margin-top: 16px; }
+.manque__action {
+  margin-top: 16px;
+  min-height: 44px;
+  padding: 0 18px;
+  border: 1px solid var(--c-line-strong);
+  border-radius: 4px;
+  background: none;
+  color: var(--c-text);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: border-color 200ms var(--e-out), color 200ms var(--e-out);
+}
+.manque__action:hover:not(:disabled) { border-color: var(--c-accent); color: var(--c-accent); }
+.manque__action:disabled { color: var(--c-text-dim); cursor: progress; }
+
+/* ── Les écrans étroits ───────────────────────────────────────────────────── */
+
+@media (max-width: 720px) {
+  .sommaire { gap: 8px; }
+  .sommaire__marque { display: none; }
+  .sommaire__liens { margin-left: 0; }
+  .remplissage__ligne { grid-template-columns: minmax(0, 1fr) 76px 40px; gap: 10px; }
+  .constat__detail { margin-left: 0; }
+  .terre { grid-template-columns: minmax(0, 1fr); }
+  .terre__tete { grid-column: 1; display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+  .terre__n { margin: 0; }
+  .bande--terre { grid-column: 1; grid-row: auto; }
+  .jauge { grid-column: 1; grid-row: auto; }
+  .ciel__pile .affiche { max-width: 100%; }
+  .bande .affiche { width: 62px; }
+  .bande__plus { width: 62px; min-height: 92px; }
+  .manque__tete { gap: 14px; }
+  .manque__n { width: 2.2ch; }
+}
+
+/* Sur un téléphone, douze colonnes d'un mois font 24 px : les étiquettes se
+   chevauchent. On ne garde qu'un mois sur deux, ce qui laisse les douze mois
+   lisibles sans réduire le graphe. */
+@media (max-width: 520px) {
+  .rythme { gap: 5px; }
+  .rythme__col:nth-child(even) .rythme__mois { visibility: hidden; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .affiche img { opacity: 1; }
+  .miroir { scroll-behavior: auto; }
+}
