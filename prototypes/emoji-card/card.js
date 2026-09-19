@@ -94,6 +94,9 @@ const state = {
   more: false,
   loadingMore: false,
   pageLoader: null,
+  forYou: false,
+  parce: new Map(),
+  sources: [],
   reactions: {},
   marks: {},
   comments: {}
@@ -540,6 +543,17 @@ function wallCard(film, index) {
   // Le titre : le renseignement le plus utile, et il manquait complètement.
   const caption = document.createElement('span');
   caption.className = 'card__caption';
+
+  /* « Parce que vous avez aimé… » : une proposition sans raison est une
+     proposition qu'on ne croit pas. */
+  if (state.forYou && state.parce?.has(keyOf(film))) {
+    const sources = state.parce.get(keyOf(film));
+    const parce = document.createElement('span');
+    parce.className = 'card__parce';
+    parce.textContent = 'parce que ' + sources.slice(0, 2).map(x => x.title).join(', ');
+    caption.append(parce);
+    card.classList.add('card--parce');
+  }
   const name = document.createElement('span');
   name.className = 'card__name';
   name.textContent = film.title;
@@ -710,6 +724,7 @@ function fadeIn() {
 
 /** Ce qu'on montre quand rien n'est cherché. */
 function show() {
+  if (state.forYou) return renderForYou();
   if (state.picked.length) return search();
   if (filtresActifs()) return runSearch();
   if (state.mode === 'film') return loadWall();
@@ -1058,6 +1073,20 @@ function filterChip(emoji, label, on, onToggle) {
 function renderFilters() {
   const frag = document.createDocumentFragment();
 
+  /* « Pour vous » n'existe qu'à partir du moment où on a aimé un film : avant,
+     il n'aurait rien à dire. C'est la récompense d'avoir donné son avis. */
+  const aAime = Object.values(state.marks).some(valeur => valeur === 'love');
+  if (aAime) {
+    frag.append(filterChip('❤️', 'Pour vous', state.forYou, () => {
+      state.forYou = !state.forYou;
+      renderFilters();
+      show();
+    }));
+    const barre = document.createElement('span');
+    barre.className = 'filter-sep';
+    frag.append(barre);
+  }
+
   for (const type of TYPES) {
     frag.append(filterChip(type.emoji, type.label, state.type === type.id, () => {
       state.type = type.id;
@@ -1177,6 +1206,97 @@ async function runSearch(page = 1, { append = false } = {}) {
     state.scroll[state.mode] = { top: 0, left: 0 };
     renderFeed();
   }
+}
+
+/* ── Pour vous : l'avis sert à découvrir ─────────────────────────────────── *
+   On ne note pas pour noter. Chaque film aimé tire vers nous ce que TMDB lui
+   associe, et le score dit pourquoi. Plus rien n'est proposé deux fois.    */
+
+/** Ce que pèse un avis dans la recommandation. « J'adore » pèse trois fois
+ *  plus que « vu » : c'est le goût qu'on cherche, pas l'historique. */
+const POIDS_AVIS = { love: 3, ok: 1.6, seen: 0.6, nope: -1.5, watching: 0.4 };
+
+let recsCache = new Map();
+
+/** Les recommandations d'un film, demandées une seule fois. */
+async function recommendationsOf(film) {
+  const at = keyOf(film);
+  if (recsCache.has(at)) return recsCache.get(at);
+  const data = await api('/' + (film.kind || 'movie') + '/' + film.id + '/recommendations')
+    .catch(() => ({ results: [] }));
+  const items = (data.results || []).map(r => normalize(r, film.kind || 'movie'));
+  recsCache.set(at, items);
+  return items;
+}
+
+/**
+ * Ce qu'on devrait aimer, d'après ce qu'on a aimé.
+ * Le score additionne les poids des films qui le proposent : un titre conseillé
+ * par trois films adorés passe devant un titre conseillé par un seul.
+ */
+async function buildRecommendations() {
+  const sources = [...state.films.values()]
+    .filter(film => POIDS_AVIS[state.marks[keyOf(film)]] !== undefined)
+    .filter(film => POIDS_AVIS[state.marks[keyOf(film)]] > 0.5)
+    .sort((a, b) => POIDS_AVIS[state.marks[keyOf(b)]] - POIDS_AVIS[state.marks[keyOf(a)]]);
+
+  if (!sources.length) return { items: [], sources: [], parce: new Map() };
+
+  const paquets = await mapLimit(sources.slice(0, 8), 4, film => recommendationsOf(film));
+
+  const scores = new Map();
+  const objets = new Map();
+  const parce = new Map();
+  paquets.forEach((items, i) => {
+    const poids = POIDS_AVIS[state.marks[keyOf(sources[i])]];
+    for (const item of items) {
+      const at = keyOf(item);
+      // On ne propose jamais ce qu'on a déjà jugé.
+      if (state.marks[at]) continue;
+      scores.set(at, (scores.get(at) || 0) + poids);
+      objets.set(at, item);
+      if (!parce.has(at)) parce.set(at, []);
+      parce.get(at).push(sources[i]);
+    }
+  });
+
+  const items = [...scores.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([at]) => objets.get(at))
+    .filter(Boolean);
+
+  items.forEach(item => state.films.set(keyOf(item), item));
+  state.parce = parce;
+  state.sources = sources;
+  return { items, sources, parce };
+}
+
+/** Le mur « Pour vous », avec la raison de chaque proposition. */
+async function renderForYou() {
+  renderSkeletons(12);
+  const { items, sources } = await buildRecommendations();
+
+  if (!sources.length) {
+    const vide = document.createElement('p');
+    vide.className = 'wall-vide';
+    vide.textContent = 'Marque un film « j\'adore » et les propositions arrivent ici.';
+    wallEl.replaceChildren(vide);
+    return;
+  }
+  if (!items.length) {
+    const vide = document.createElement('p');
+    vide.className = 'wall-vide';
+    vide.textContent = 'Rien de neuf à proposer pour l\'instant.';
+    wallEl.replaceChildren(vide);
+    return;
+  }
+
+  state.wall = items.slice(0, 60);
+  state.more = false;
+  state.pageLoader = null;
+  state.scroll.film = { top: 0, left: 0 };
+  renderWall();
+  announce(state.wall.length + ' films proposés d\'après ' + sources.length + ' films aimés.');
 }
 
 /* ── Le survol : un diaporama par groupes ────────────────────────────────── *
@@ -1877,6 +1997,8 @@ function markChip(film, option, on, compact) {
     else state.marks[at] = option.id;
     saveStore();
     announce(option.label + (state.marks[at] === option.id ? ' activé.' : ' désactivé.'));
+    // Un avis peut faire naître l'espace « Pour vous » : les filtres suivent.
+    renderFilters();
     refresh(film);
   });
   return button;

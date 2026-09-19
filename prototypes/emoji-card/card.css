@@ -344,6 +344,30 @@ img { display: block; }
 }
 .card--hero .card__name { font-size: var(--fs-lg); }
 
+/* La raison d'une proposition : discrète, mais elle doit se lire — une
+   proposition sans raison est une proposition qu'on ne croit pas. */
+.card__parce {
+  font-size: 9px;
+  line-height: 1.3;
+  color: var(--c-accent);
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.card--parce .card__sub { display: none; }
+
+/* Un mur qui explique pourquoi il est vide, au lieu de rester noir. */
+.wall-vide {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 48px 8px;
+  text-align: center;
+  font-size: var(--fs-sm);
+  line-height: 1.6;
+  color: var(--c-text-dim);
+}
+
 .card__sub {
   font-size: 9.5px;
   font-weight: 500;
