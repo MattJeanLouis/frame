@@ -511,10 +511,10 @@ part jamais dans la page.
 `FRAME_BASE=http://127.0.0.1:8094/` — c'est le seul moyen de savoir si le miroir
 survit au passage par le relais.
 
-### Trois scripts de vérification sont périmés
+### Quatre scripts de vérification sont périmés
 
 Constaté le 20 septembre 2026, et **vérifié contre le commit précédent** pour
-être sûr que ce n'était pas une régression fraîche : `verif-signifiants.mjs`,
+être sûr que ce ne sont pas des régressions fraîches. `verif-signifiants.mjs`,
 `verif-affordances.mjs` et `verif-reactif.mjs` éprouvent le **survol d'avant**.
 
 - Ils attendent la classe `.card.is-peeking` et le diaporama `card.__deck`.
@@ -525,8 +525,16 @@ Constaté le 20 septembre 2026, et **vérifié contre le commit précédent** po
   enfant `.card__open` : un clic posé sur le parent ne déclenche pas l'enfant.
   C'est déjà corrigé dans `verif-liste.mjs`.
 
-Ces trois scripts sont à réécrire pour le survol actuel — ou à supprimer. Les
-six règles mortes relèvent de la couche DA, pas du fonctionnel.
+`verif-final.mjs` échoue sur trois points, **à l'identique avant et après** :
+la vidéo du fil vertical ne couvre pas sa scène sur téléphone (390×574 de scène
+pour 390×219 de vidéo), et la barre d'outils en 390 px ne fait que 260 px de
+large avec ses rangées de pastilles à zéro de haut. Le premier point est le
+compromis déjà consigné — YouTube impose son cadre, on a choisi le cadrage
+correct plutôt que de masquer ses commandes — mais le script, lui, attend
+l'inverse.
+
+Ces quatre scripts sont à réécrire ou à supprimer. Les six règles CSS mortes
+`.card.is-peeking` relèvent de la couche DA, pas du fonctionnel.
 
 `verif-soiree.mjs` a besoin de deux Chrome sur des ports de débogage différents (9222 et
 9223) et de profils séparés : sans deux stockages distincts, on ne teste qu'un joueur qui
