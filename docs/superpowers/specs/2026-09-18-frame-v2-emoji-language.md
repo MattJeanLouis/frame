@@ -308,7 +308,80 @@ apparaît sans avoir été demandé, et c'est précisément là qu'il fait sens.
   libellé qui dit aussi par quoi il est signé.
 - `prefers-reduced-motion` supprime les animations de carton.
 
-## 15. Questions ouvertes
+## 15. Le renversement : le texte commande (18 septembre 2026)
+
+Matt s'est ravisé : « il me faut du texte pour comprendre les films au maximum ».
+Le zéro-texte du §1 est levé, et la hiérarchie s'inverse.
+
+### Ce qui change
+
+| Avant | Après |
+|---|---|
+| L'emoji est la langue, le texte est toléré | **Le texte commande**, l'emoji donne envie |
+| L'emoji nomme, cherche et commente | L'emoji est **l'accroche** : ce qui rend un titre mémorable et partageable |
+| Le mur est anonyme | Le mur **affiche les titres** |
+
+Ce n'est pas un renoncement, c'est un partage des rôles : **le texte explique,
+l'emoji retient.** Une signature d'emoji est un hook — elle ne renseigne pas,
+elle fait envie. Un synopsis renseigne et ne fait pas envie. Les deux sont
+nécessaires et aucun ne fait le travail de l'autre.
+
+Le renversement ferme au passage trois tensions signalées plus tôt :
+l'impossibilité de comprendre un film sans résumé, l'identité d'un film réduite à
+des symboles, et les atmosphères de couleur (🟥 🟦 🟪) qui portaient une
+information par la teinte seule — avec du texte, elles portent un nom.
+
+### Films **et** séries
+
+Matt veut des animés. Mesuré : **628 séries animées** contre 456 films dans le
+même filtre — les animés sont surtout des séries. Il faut donc les deux, et le
+modèle doit les unir : `name`/`first_air_date` au lieu de
+`title`/`release_date`, saisons et épisodes au lieu de la durée, « Création » au
+lieu de « Réalisation ».
+
+**Un film et une série peuvent porter le même identifiant** : la clé de tout ce
+qu'on retient d'un titre est donc `type:id`.
+
+**Le moment ne porte pas les animés.** Mesuré sur 12 séries animées populaires :
+**6 ont une vidéo, 4 une bande-annonce** (contre 15 et 15 sur 20 films). Pour la
+moitié du catalogue animé, l'affiche et le texte doivent tenir seuls.
+
+### Ce que la fiche montre
+
+Résumé, ligne technique (type, année, durée ou saisons et épisodes, genres),
+réalisation ou création, casting, production, pays, note publique, budget,
+recettes, et plateformes quand il y en a.
+
+**Les plateformes sont incomplètes** : 3 films sur 10 en France sur un échantillon
+de films populaires — et les absents sont précisément les nouveautés, celles
+qu'on veut mettre en avant. Une rubrique « où le voir » vide est pire que pas de
+rubrique : on ne l'affiche que si elle a quelque chose à dire, sinon on affiche
+la date de sortie.
+
+**Le résumé français est souvent squelettique** sur les animés — Doraemon tenait
+en six mots. Repli automatique sur l'anglais quand le résumé français fait moins
+de 40 signes.
+
+### La notation
+
+L'anti-référence « pas d'appli de notation » visait la notation **de FRAME** :
+étoiles, pourcentages de correspondance, moyenne calculée par l'appli. Afficher
+la note publique TMDB dans une fiche, comme un renseignement parmi d'autres,
+n'est pas la même chose : c'est du contexte, pas un jugement de FRAME.
+
+### Ce qui reste à trancher
+
+Les états. Matt a demandé : **vu / en cours / j'ai pas aimé / j'adore / ok**. Ces
+cinq-là mélangent deux axes — la progression (vu, en cours) et l'avis (j'adore,
+ok, pas aimé) — qui ne s'excluent pas : on peut avoir vu *et* adoré. Deux
+modèles possibles, à décider :
+
+- **un seul axe, cinq étiquettes** : ce que tu dis d'un film, en un mot, une
+  seule touche. Simple, mais « vu » et « ok » se recouvrent ;
+- **deux axes** : progression (à voir / en cours / vu) × avis (j'adore / ok /
+  pas aimé). Plus juste, deux touches.
+
+## 16. Questions ouvertes
 
 - **Le geste « à voir ».** Un cycle à une touche suffit-il, ou faut-il un geste
   directionnel, plus proche de l'habitude du défilement ? À tester à la main.

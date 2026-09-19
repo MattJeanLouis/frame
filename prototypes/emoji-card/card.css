@@ -299,23 +299,58 @@ img { display: block; }
   pointer-events: none;
 }
 
-/* La signature : le nom du film. Plate, posée sur l'image, jamais un bouton. */
-.card__sig {
+/* Le pied de carte : l'accroche emoji, puis le titre. La signature fait envie,
+   le titre renseigne — et sans lui, le mur était illisible. */
+.card__foot {
   position: absolute;
   left: 0; right: 0; bottom: 0;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 3px;
+  display: grid;
+  gap: 5px;
   padding: 10px 10px 9px;
   pointer-events: none;
 }
-.card--hero .card__sig { padding: 16px 18px 14px; gap: 6px; }
+.card--hero .card__foot { padding: 16px 18px 14px; gap: 8px; }
+
+.card__sig {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+.card--hero .card__sig { gap: 6px; }
 
 .card__sig img {
   width: 25px; height: 25px;
   filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.9));
 }
 .card--hero .card__sig img { width: 34px; height: 34px; }
+
+.card__caption {
+  display: grid;
+  gap: 2px;
+}
+
+.card__name {
+  font-family: var(--ff-text);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  line-height: 1.22;
+  color: var(--c-text);
+  text-wrap: pretty;
+  /* Deux lignes au plus : une affiche n'est pas une fiche. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.card--hero .card__name { font-size: var(--fs-lg); }
+
+.card__sub {
+  font-size: 9.5px;
+  font-weight: 500;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--c-text-dim);
+}
 
 /* L'état : un emoji posé sur un disque sombre, doublé par la position. */
 .card__state {
@@ -1137,6 +1172,56 @@ img { display: block; }
   align-content: center;
   padding: 0 16px 24px;
   overflow: visible;
+}
+
+/* ── Le texte : comprendre le film ───────────────────────────────────────── *
+   Ici le texte commande. La signature au-dessus fait envie ; ceci renseigne.
+   Hiérarchie franche : une ligne technique en capitales, un résumé qui se lit,
+   puis des lignes étiquetées. Rien n'est au même niveau.                     */
+
+.text {
+  display: grid;
+  gap: 14px;
+}
+
+.text__meta {
+  margin: 0;
+  font-family: var(--ff-text);
+  font-size: var(--fs-2xs);
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--c-accent);
+}
+
+.text__overview {
+  margin: 0;
+  font-size: var(--fs-md);
+  line-height: 1.6;
+  color: var(--c-text);
+}
+
+.text__row {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  gap: 12px;
+  padding-top: 11px;
+  border-top: 1px solid var(--c-line);
+}
+
+.text__label {
+  font-size: var(--fs-2xs);
+  font-weight: 600;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--c-text-dim);
+  padding-top: 2px;
+}
+
+.text__value {
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+  color: var(--c-text);
 }
 
 .composer { display: grid; gap: 14px; }

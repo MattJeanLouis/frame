@@ -5,9 +5,10 @@
 ### Users
 
 **Matt, seul, sur son téléphone, le soir.** Il regarde beaucoup de films et n'a
-aucun mal à en parler — le mal est de retrouver, trier et se souvenir de ce qu'il
-a ressenti. Le job à faire : *retrouver un film par ce qu'il a ressenti devant,
-pas par son titre*, et voir émerger son propre goût.
+aucun mal à en parler — le mal est de **comprendre** ce qu'il regarde et de
+retrouver, trier et se souvenir de ce qu'il a ressenti. Le job à faire :
+*comprendre un film avant de le regarder, et se souvenir de ce qu'on en a pensé
+après* — le titre est l'entrée, le ressenti est ce qu'on garde.
 
 Second contexte, plus tard : **le canapé, sur la télé, à la télécommande.** Cinq
 touches, pas de clavier, à trois mètres de l'écran. C'est un contexte différent,
@@ -37,9 +38,11 @@ un fond très sombre fait des emoji les **seules lumières de la pièce**.
   `#1C2333`, texte `#F2EEE6` et `#A9B0BF`, accent unique **ambre projecteur
   `#F2B544`**.
 - Thème **sombre uniquement**, partout, par choix.
-- **Syne** pour le nom et les rares titres, **Instrument Sans** pour le reste.
-  Mais l'interface nouvelle n'utilise quasiment pas de type : la forme et la
-  couleur portent le sens.
+- **Syne** pour la marque et les accents, **Instrument Sans** pour tout le
+  texte, **Instrument Serif** pour la citation. Depuis le renversement du
+  18 septembre 2026, le texte porte le sens : la typographie est un matériau de
+  premier plan, pas un reste. Hiérarchie franche — une ligne technique en
+  capitales espacées, un résumé qui se lit, des lignes étiquetées.
 - **Twemoji en SVG**, jamais l'emoji natif : le langage doit s'afficher à
   l'identique sur toutes les plateformes. Un langage qui change de dessin selon
   la machine n'est pas un langage.
@@ -47,7 +50,10 @@ un fond très sombre fait des emoji les **seules lumières de la pièce**.
   rythmes — pas des cartes arrondies avec ombre uniforme.
 
 **Anti-références** (ce que FRAME ne doit jamais devenir) :
-- une appli de notation : étoiles, notes sur 10, pourcentages, moyennes ;
+- une appli de notation **de FRAME** : étoiles, pourcentages de correspondance,
+  moyenne calculée par l'appli. (Afficher la note publique TMDB dans une fiche,
+  comme un renseignement parmi d'autres, n'est pas la même chose — c'est du
+  contexte, pas un jugement de FRAME.) ;
 - un réseau social ou une messagerie : fil d'actualité, likes, commentaires
   écrits, abonnements ;
 - un tableau de bord : courbes, graphiques, profil chiffré ;
@@ -65,9 +71,11 @@ un fond très sombre fait des emoji les **seules lumières de la pièce**.
    par ce que tu as réellement ressenti devant un moment du film. Le dérivé est
    un point de départ, jamais une vérité.
 
-3. **Zéro texte, sauf là où il est inévitable** : attribution TMDB et lecteurs
-   d'écran. Un libellé accessible n'est pas du texte visible ; c'est le même
-   contenu pour quelqu'un qui ne voit pas l'écran.
+3. **Le texte commande, l'emoji donne envie.** *Renversé le 18 septembre 2026 :*
+   Matt a conclu qu'il lui faut du texte pour comprendre un film. L'emoji devient
+   l'accroche — l'affiche du film, ce qui le rend mémorable et partageable.
+   Le texte explique ; l'emoji retient. Aucun des deux ne fait le travail de
+   l'autre, et aucun n'est décoratif : l'accroche est un rôle, pas un ornement.
 
 4. **Chaque geste répond tout de suite.** Norman : réduire les golfes d'exécution
    et d'évaluation. Avant de toucher, on doit savoir ce que le signe va faire ;

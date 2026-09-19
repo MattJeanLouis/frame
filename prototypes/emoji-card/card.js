@@ -106,6 +106,10 @@ function saveStore() {
 
 /* ── Dérivation de la signature (spec v2 §4) ──────────────────────────────── */
 
+/** Un film et une série peuvent porter le même identifiant : le type fait
+ *  donc partie de la clé de tout ce qu'on retient d'un titre. */
+const keyOf = film => (film.kind || 'movie') + ':' + film.id;
+
 /** Étage 1 — les genres. Gratuit : tout film de `discover` les porte déjà. */
 function byGenres(film) {
   const genres = new Set(film.genre_ids || []);
@@ -157,15 +161,19 @@ function proposed(film) {
 
 /** Le nom du film : ta réaction si tu en as une, sinon la proposition. */
 function signatureOf(film) {
-  const own = state.reactions[film.id];
+  const own = state.reactions[keyOf(film)];
   return own && own.length ? own : proposed(film);
 }
 
 /* ── Réseau ───────────────────────────────────────────────────────────────── */
 
-async function api(path) {
+async function api(path, params) {
   const url = new URL(API_BASE + path);
   url.searchParams.set('language', 'fr-FR');
+  for (const [key, value] of Object.entries(params || {})) {
+    if (value === undefined || value === null || value === '') continue;
+    url.searchParams.set(key, String(value));
+  }
   const options = { headers: { accept: 'application/json' } };
   const auth = detectAuth(state.credential);
   if (auth === 'bearer') options.headers.Authorization = 'Bearer ' + state.credential;
@@ -174,6 +182,100 @@ async function api(path) {
   const response = await fetch(url, options);
   if (!response.ok) throw new Error('TMDB ' + response.status);
   return response.json();
+}
+
+/* ── Films et séries : une seule matière ──────────────────────────────────── */
+
+/**
+ * Une série n'a pas les mêmes champs qu'un film — `name` au lieu de `title`,
+ * `first_air_date` au lieu de `release_date`. On ramène tout à une seule forme
+ * pour que le reste de l'application n'ait jamais à le savoir.
+ */
+function normalize(raw, kind) {
+  if (!raw) return null;
+  return {
+    ...raw,
+    kind,
+    title: raw.title || raw.name || '',
+    date: raw.release_date || raw.first_air_date || '',
+    genre_ids: raw.genre_ids || (raw.genres || []).map(g => g.id)
+  };
+}
+
+/** Le corpus : des films et des animés, entrelacés — ni un mur, ni l'autre. */
+async function discoverCorpus() {
+  const [films, anime] = await Promise.all([
+    api('/discover/movie', { sort_by: 'popularity.desc', 'vote_count.gte': 300, page: 1 }),
+    api('/discover/tv', {
+      with_genres: 16, with_original_language: 'ja',
+      sort_by: 'popularity.desc', 'vote_count.gte': 200, page: 1
+    })
+  ]);
+  const a = (films.results || []).map(f => normalize(f, 'movie'));
+  const b = (anime.results || []).map(s => normalize(s, 'tv'));
+  const out = [];
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    if (a[i]) out.push(a[i]);
+    if (b[i]) out.push(b[i]);
+  }
+  return out;
+}
+
+/**
+ * Tout ce qu'il faut pour comprendre un film — une seule fois par titre.
+ * Les plateformes peuvent manquer : elles manquent presque toujours pour une
+ * nouveauté, et ce n'est pas une erreur.
+ */
+async function fetchDetail(film) {
+  if (film.__detail) return film;
+  film.__detail = true;
+  if (!state.live) return film;
+
+  const base = '/' + film.kind + '/' + film.id;
+  const [detail, credits, providers] = await Promise.all([
+    api(base).catch(() => null),
+    api(base + '/credits').catch(() => null),
+    api(base + '/watch/providers').catch(() => null)
+  ]);
+
+  if (detail) {
+    film.runtime = detail.runtime || (detail.episode_run_time || [])[0] || null;
+    film.seasons = detail.number_of_seasons || null;
+    film.episodes = detail.number_of_episodes || null;
+    film.status = detail.status || '';
+    film.budget = detail.budget || 0;
+    film.revenue = detail.revenue || 0;
+    film.countries = (detail.production_countries || []).map(c => c.name);
+    film.companies = (detail.production_companies || []).map(c => c.name);
+    film.genres = (detail.genres || []).map(g => g.name);
+    film.overview = detail.overview || film.overview || '';
+
+    // TMDB a souvent un résumé français squelettique sur les animés. Un
+    // résumé anglais vaut mieux qu'une fiche muette.
+    if (film.overview.trim().length < 40) {
+      const anglais = await api(base, { language: 'en-US' }).catch(() => null);
+      if (anglais?.overview && anglais.overview.trim().length > film.overview.trim().length) {
+        film.overview = anglais.overview;
+        film.overviewLang = 'en';
+      }
+    }
+    film.vote_average = detail.vote_average ?? film.vote_average;
+    film.vote_count = detail.vote_count ?? film.vote_count;
+    if (!film.poster_path) film.poster_path = detail.poster_path || null;
+  }
+
+  if (credits) {
+    film.director = (credits.crew || []).find(c => c.job === 'Director')?.name
+      || (detail?.created_by || [])[0]?.name || '';
+    film.cast = (credits.cast || []).slice(0, 5).map(c => c.name);
+  }
+
+  const fr = providers?.results?.FR;
+  film.providers = fr
+    ? [...new Set([...(fr.flatrate || []), ...(fr.rent || []), ...(fr.buy || [])].map(p => p.provider_name))]
+    : [];
+
+  return film;
 }
 
 /** Mots-clés et vidéos : une seule fois par film, puis gardés en mémoire. */
@@ -372,19 +474,20 @@ function renderSkeletons(count = 8) {
 function wallLabel(film, signature, mark) {
   const labels = signature.map(id => STICKER_BY_ID.get(id)?.label).filter(Boolean).join(', ');
   const etat = mark === 'seen' ? 'Vu' : mark === 'want' ? 'À voir' : 'Sans état';
-  return film.title + (film.release_date ? ', ' + film.release_date.slice(0, 4) : '') +
+  const quoi = film.kind === 'tv' ? 'Série' : 'Film';
+  return quoi + ' ' + film.title + (film.date ? ', ' + film.date.slice(0, 4) : '') +
     '. ' + etat + '. Signature : ' + (labels || 'aucune');
 }
 
 function wallCard(film, index) {
   const signature = signatureOf(film);
-  const mark = state.marks[film.id];
+  const mark = state.marks[keyOf(film)];
   const hero = index % 8 === 0;
 
   const card = document.createElement('button');
   card.type = 'button';
   card.className = 'card' + (hero ? ' card--hero' : '');
-  card.dataset.id = String(film.id);
+  card.dataset.id = keyOf(film);
   if (mark) card.dataset.mark = mark;
   card.style.setProperty('--delay', Math.min(index, 12) * 45 + 'ms');
 
@@ -405,13 +508,30 @@ function wallCard(film, index) {
   scrim.className = 'card__scrim';
   card.append(scrim);
 
+  const foot = document.createElement('span');
+  foot.className = 'card__foot';
+
   const sig = document.createElement('span');
   sig.className = 'card__sig';
   for (const id of signature) {
     const sticker = STICKER_BY_ID.get(id);
     if (sticker) sig.append(emojiImg(sticker.emoji));
   }
-  card.append(sig);
+  foot.append(sig);
+
+  // Le titre : le renseignement le plus utile, et il manquait complètement.
+  const caption = document.createElement('span');
+  caption.className = 'card__caption';
+  const name = document.createElement('span');
+  name.className = 'card__name';
+  name.textContent = film.title;
+  const sub = document.createElement('span');
+  sub.className = 'card__sub';
+  sub.textContent = (film.kind === 'tv' ? 'Série' : 'Film') +
+    (film.date ? ' · ' + film.date.slice(0, 4) : '');
+  caption.append(name, sub);
+  foot.append(caption);
+  card.append(foot);
 
   if (mark) {
     const badge = document.createElement('span');
@@ -420,7 +540,7 @@ function wallCard(film, index) {
     card.append(badge);
   }
 
-  card.addEventListener('click', () => openCard(film.id));
+  card.addEventListener('click', () => openCard(film));
   return card;
 }
 
@@ -431,9 +551,9 @@ function wallCard(film, index) {
  */
 function refreshWallCard(film) {
   const signature = signatureOf(film);
-  const mark = state.marks[film.id];
+  const mark = state.marks[keyOf(film)];
 
-  for (const card of wallEl.querySelectorAll('.card[data-id="' + film.id + '"]')) {
+  for (const card of wallEl.querySelectorAll('.card[data-id="' + keyOf(film) + '"]')) {
     const sig = card.querySelector('.card__sig');
     if (sig) {
       sig.replaceChildren(...signature
@@ -468,7 +588,7 @@ function renderWall() {
     wallEl.replaceChildren(empty);
     return;
   }
-  wallEl.replaceChildren(...state.wall.map((id, i) => wallCard(state.films.get(id), i)));
+  wallEl.replaceChildren(...state.wall.map((film, i) => wallCard(film, i)));
   restoreScroll('film');
 }
 
@@ -550,18 +670,15 @@ async function loadFeed() {
   const films = [];
   try {
     if (state.live) {
-      const data = await state.client.discover({
-        keywordIds: [], sortBy: 'popularity.desc', voteCountGte: 300, page: 1
-      });
-      films.push(...(data.results || []));
+      films.push(...await discoverCorpus());
     } else {
       const all = Object.values(DEMO_POOLS).flatMap(p => p.popular);
-      films.push(...[...new Map(all.map(f => [f.id, f])).values()]);
+      films.push(...[...new Map(all.map(f => [f.id, f])).values()].map(f => normalize(f, 'movie')));
     }
   } catch (error) {
     announce('Les vidéos n\'ont pas pu être chargées : ' + error.message);
   }
-  films.forEach(f => state.films.set(f.id, f));
+  films.forEach(f => state.films.set(keyOf(f), f));
 
   const videos = await mapLimit(films, 6, film => fetchVideos(film));
   const tout = films.map((film, i) => ({ film, video: bestVideo(videos[i]) }));
@@ -592,7 +709,7 @@ function renderFeedSkeleton() {
 function interleave(items) {
   const out = [];
   for (const item of items) {
-    if (state.mode === 'reel' && state.comments[item.film.id]?.text) {
+    if (state.mode === 'reel' && state.comments[keyOf(item.film)]?.text) {
       out.push({ kind: 'comment', film: item.film });
     }
     out.push({ kind: 'moment', film: item.film, video: item.video });
@@ -606,25 +723,25 @@ function reelCard(item, index) {
   if (item.kind === 'comment') {
     const card = document.createElement('article');
     card.className = 'reel reel--quote';
-    card.dataset.id = String(item.film.id);
+    card.dataset.id = keyOf(item.film);
     card.append(quoteCard(item.film));
 
     const open = document.createElement('button');
     open.type = 'button';
     open.className = 'reel__open';
     open.setAttribute('aria-label', item.film.title + '. Ouvrir la fiche.');
-    open.addEventListener('click', () => openCard(item.film.id));
+    open.addEventListener('click', () => openCard(item.film));
     card.append(open);
     return card;
   }
 
   const { film, video } = item;
   const signature = signatureOf(film);
-  const mark = state.marks[film.id];
+  const mark = state.marks[keyOf(film)];
 
   const card = document.createElement('article');
   card.className = 'reel';
-  card.dataset.id = String(film.id);
+  card.dataset.id = keyOf(film);
 
   const stage = document.createElement('div');
   stage.className = 'reel__stage';
@@ -670,7 +787,7 @@ function reelCard(item, index) {
   open.type = 'button';
   open.className = 'reel__open';
   open.setAttribute('aria-label', film.title + '. Ouvrir la fiche.');
-  open.addEventListener('click', () => openCard(film.id));
+  open.addEventListener('click', () => openCard(film));
   stage.append(open);
 
   card.append(stage);
@@ -696,10 +813,10 @@ function reelCard(item, index) {
       button.setAttribute('aria-label', label);
       button.append(emojiImg(emoji));
       button.addEventListener('click', () => {
-        if (state.marks[film.id] === value) delete state.marks[film.id];
-        else state.marks[film.id] = value;
+        if (state.marks[keyOf(film)] === value) delete state.marks[keyOf(film)];
+        else state.marks[keyOf(film)] = value;
         saveStore();
-        announce(label + (state.marks[film.id] === value ? ' activé.' : ' désactivé.'));
+        announce(label + (state.marks[keyOf(film)] === value ? ' activé.' : ' désactivé.'));
         refresh(film);
       });
       marks.append(button);
@@ -756,40 +873,37 @@ function renderFeed() {
 /** La liste courante, dans l'ordre de la présentation, sans doublon. */
 function currentList() {
   if (state.mode === 'film') return state.wall;
-  return [...new Set(state.items.map(item => item.film.id))];
+  return [...new Map(state.items.map(item => [keyOf(item.film), item.film])).values()];
 }
 
 function filmAt(index) {
   const list = currentList();
-  return index >= 0 && index < list.length ? state.films.get(list[index]) : null;
+  return index >= 0 && index < list.length ? list[index] : null;
 }
 
 /** Sans ressortir de la fiche : c'est le geste qui manquait le plus. */
 function stepFilm(direction) {
   const list = currentList();
-  const at = list.indexOf(current?.id);
+  const at = list.findIndex(x => x === current);
   if (at < 0) return;
   const next = filmAt(at + direction);
   if (!next) return;
-  openCard(next.id);
+  openCard(next);
 }
 
 async function loadWall() {
   renderSkeletons();
   try {
     if (state.live) {
-      // discover sans mot-clé : le mur des films populaires.
-      const data = await state.client.discover({
-        keywordIds: [], sortBy: 'popularity.desc', voteCountGte: 500, page: 1
-      });
-      const results = data.results || [];
-      results.forEach(f => state.films.set(f.id, f));
-      state.wall = results.map(f => f.id);
+      // Films et animés, entrelacés.
+      const results = await discoverCorpus();
+      results.forEach(f => state.films.set(keyOf(f), f));
+      state.wall = results;
     } else {
       const ids = Object.values(DEMO_POOLS).flatMap(p => p.popular);
       const unique = [...new Map(ids.map(f => [f.id, f])).values()];
-      unique.forEach(f => state.films.set(f.id, f));
-      state.wall = unique.map(f => f.id);
+      unique.forEach(f => state.films.set(keyOf(f), f));
+      state.wall = unique.map(f => normalize(f, 'movie'));
     }
   } catch (error) {
     announce('Les films n\'ont pas pu être chargés : ' + error.message);
@@ -818,14 +932,14 @@ async function search() {
     const seed = placed.map(p => p.id + ':1.00').join('|');
     const entries = selectMovies(placed, pools, [], seed);
     const films = entries.map(e => e.movie);
-    films.forEach(f => state.films.set(f.id, f));
+    films.forEach(f => state.films.set(keyOf(f), f));
     announce(films.length + ' films trouvés.');
 
     if (dansLeFil) {
       const videos = await mapLimit(films, 6, film => fetchVideos(film));
       state.items = interleave(films.map((film, i) => ({ film, video: bestVideo(videos[i]) })));
     } else {
-      state.wall = films.map(f => f.id);
+      state.wall = films;
     }
   } catch (error) {
     announce('La recherche a échoué : ' + error.message);
@@ -906,7 +1020,7 @@ function reactionButton(film, sticker, signature, on) {
     const at = own.indexOf(sticker.id);
     if (at >= 0) own.splice(at, 1);
     else own.push(sticker.id);
-    state.reactions[film.id] = own;
+    state.reactions[keyOf(film)] = own;
     saveStore();
     if (at < 0) spark(event, sticker.emoji);
     announce(sticker.label + (at < 0 ? ' ajouté. ' : ' retiré. ') + 'Signature : ' +
@@ -953,16 +1067,15 @@ function buildCardPalette(film, signature) {
   return wrap;
 }
 
-async function openCard(id) {
-  const film = state.films.get(id);
+async function openCard(film) {
   if (!film) return;
   current = film;
   state.paletteOpen = false;
 
-  if (!film.__extra && state.live) {
-    renderCardView(film);          // premier rendu avec ce qu'on a
-    await fetchExtras(film);       // puis on raffine, sur place
-    if (current === film) renderCardView(film);
+  if (!film.__detail && state.live) {
+    renderCardView(film);                       // premier rendu avec ce qu'on a
+    await Promise.all([fetchDetail(film), fetchExtras(film)]);
+    if (current === film) renderCardView(film);  // puis on complète
     return;
   }
   renderCardView(film);
@@ -979,7 +1092,7 @@ function sigSlot(film, stickerId, index) {
     sticker.label + (index === 0 ? ', impression principale' : '') + '. Retirer de la signature.');
   slot.append(emojiImg(sticker.emoji));
   slot.addEventListener('click', event => {
-    state.reactions[film.id] = signatureOf(film).filter(x => x !== stickerId);
+    state.reactions[keyOf(film)] = signatureOf(film).filter(x => x !== stickerId);
     saveStore();
     spark(event, sticker.emoji);
     announce(sticker.label + ' retiré de la signature.');
@@ -1041,7 +1154,7 @@ function buildReactHost(film, signature) {
  * dit aussi par quoi il est signé.
  */
 function quoteCard(film) {
-  const comment = state.comments[film.id] || {};
+  const comment = state.comments[keyOf(film)] || {};
   const preset = comment.preset || 'carton';
   const signature = signatureOf(film);
 
@@ -1116,7 +1229,7 @@ function buildComposer(film) {
   input.className = 'composer__input';
   input.rows = 3;
   input.maxLength = COMMENT_MAX;
-  input.value = state.comments[film.id]?.text || '';
+  input.value = state.comments[keyOf(film)]?.text || '';
   input.placeholder = '✍️';
   input.setAttribute('aria-label', 'Ton commentaire sur ' + film.title);
   field.append(input);
@@ -1140,7 +1253,7 @@ function buildComposer(film) {
 
   input.addEventListener('input', () => {
     scale();
-    state.comments[film.id] = { text: input.value, preset: state.preset, at: Date.now() };
+    state.comments[keyOf(film)] = { text: input.value, preset: state.preset, at: Date.now() };
     saveStore();
   });
 
@@ -1155,8 +1268,8 @@ function buildComposer(film) {
   done.append(emojiImg('✅'));
   done.addEventListener('click', () => {
     const value = input.value.trim();
-    if (value) state.comments[film.id] = { text: value, preset: state.preset, at: Date.now() };
-    else delete state.comments[film.id];
+    if (value) state.comments[keyOf(film)] = { text: value, preset: state.preset, at: Date.now() };
+    else delete state.comments[keyOf(film)];
     saveStore();
     state.composing = false;
     renderCardView(film);
@@ -1169,12 +1282,89 @@ function buildComposer(film) {
   return wrap;
 }
 
+/** Un montant lisible : les recettes de Spider-Man ne se lisent pas en chiffres bruts. */
+function money(value) {
+  if (!value) return '';
+  return new Intl.NumberFormat('fr-FR', {
+    style: 'currency', currency: 'USD', maximumFractionDigits: 0
+  }).format(value);
+}
+
+/**
+ * Le texte : comprendre le film.
+ *
+ * C'est ici que le texte commande. Il répond à « qu'est-ce que c'est » —
+ * ce que la signature emoji ne saura jamais dire. Elle reste au-dessus, comme
+ * l'affiche : elle fait envie, elle ne renseigne pas.
+ */
+function buildTextBlock(film) {
+  const wrap = document.createElement('div');
+  wrap.className = 'text';
+
+  /* La ligne technique, en capitales espacées : on situe avant de lire. */
+  const meta = [film.kind === 'tv' ? 'Série' : 'Film'];
+  if (film.date) meta.push(film.date.slice(0, 4));
+  if (film.kind === 'tv') {
+    if (film.seasons) meta.push(film.seasons + (film.seasons > 1 ? ' saisons' : ' saison'));
+    if (film.episodes) meta.push(film.episodes + ' épisodes');
+  } else if (film.runtime) {
+    meta.push(film.runtime + ' min');
+  }
+  if (film.genres?.length) meta.push(film.genres.slice(0, 3).join(', '));
+
+  const head = document.createElement('p');
+  head.className = 'text__meta';
+  head.textContent = meta.join(' · ');
+  wrap.append(head);
+
+  if (film.overview) {
+    const overview = document.createElement('p');
+    overview.className = 'text__overview';
+    overview.textContent = film.overview;
+    wrap.append(overview);
+  }
+
+  const rows = [];
+  if (film.director) rows.push([film.kind === 'tv' ? 'Création' : 'Réalisation', film.director]);
+  if (film.cast?.length) rows.push(['Avec', film.cast.join(', ')]);
+  if (film.companies?.length) rows.push(['Production', film.companies.slice(0, 2).join(', ')]);
+  if (film.countries?.length) rows.push(['Pays', film.countries.join(', ')]);
+  if (film.vote_count) {
+    rows.push(['Note', film.vote_average.toFixed(1) + ' / 10 sur ' +
+      new Intl.NumberFormat('fr-FR').format(film.vote_count) + ' votes']);
+  }
+  if (film.budget) rows.push(['Budget', money(film.budget)]);
+  if (film.revenue) rows.push(['Recettes', money(film.revenue)]);
+
+  // Une rubrique « où le voir » vide serait pire que pas de rubrique : on ne
+  // l'affiche que quand il y a quelque chose à dire, et sinon on dit la sortie.
+  if (film.providers?.length) rows.push(['Où le voir', film.providers.join(', ')]);
+  else if (film.date && new Date(film.date) > new Date()) {
+    rows.push(['Sortie', new Intl.DateTimeFormat('fr-FR', { dateStyle: 'long' }).format(new Date(film.date))]);
+  }
+
+  for (const [label, value] of rows) {
+    const row = document.createElement('div');
+    row.className = 'text__row';
+    const name = document.createElement('span');
+    name.className = 'text__label';
+    name.textContent = label;
+    const content = document.createElement('span');
+    content.className = 'text__value';
+    content.textContent = value;
+    row.append(name, content);
+    wrap.append(row);
+  }
+
+  return wrap;
+}
+
 /** Ce qui se montre à la place du commentaire : le carton, ou l'invitation. */
 function buildCommentSlot(film) {
   const wrap = document.createElement('div');
   wrap.className = 'comment-slot';
 
-  const comment = state.comments[film.id];
+  const comment = state.comments[keyOf(film)];
   if (comment && comment.text) wrap.append(quoteCard(film));
 
   const write = document.createElement('button');
@@ -1204,10 +1394,10 @@ function buildFoot(film, mark) {
     button.setAttribute('aria-label', label);
     button.append(emojiImg(emoji));
     button.addEventListener('click', () => {
-      if (state.marks[film.id] === value) delete state.marks[film.id];
-      else state.marks[film.id] = value;
+      if (state.marks[keyOf(film)] === value) delete state.marks[keyOf(film)];
+      else state.marks[keyOf(film)] = value;
       saveStore();
-      announce(label + (state.marks[film.id] === value ? ' activé.' : ' désactivé.'));
+      announce(label + (state.marks[keyOf(film)] === value ? ' activé.' : ' désactivé.'));
       refresh(film);
     });
     foot.append(button);
@@ -1221,7 +1411,7 @@ function renderCardView(film) {
   if (state.composing) return renderComposer(film);
 
   const signature = signatureOf(film);
-  const mark = state.marks[film.id];
+  const mark = state.marks[keyOf(film)];
   const moment = momentOf(film);
 
   const frag = document.createDocumentFragment();
@@ -1261,7 +1451,7 @@ function renderCardView(film) {
 
   /* Passer au film suivant sans ressortir. Le geste a un signifiant visible :
      un glissement qu'on ne voit pas n'en est pas un. */
-  const at = currentList().indexOf(film.id);
+  const at = currentList().findIndex(x => keyOf(x) === keyOf(film));
   for (const [direction, suffix, label] of [[-1, 'prev', 'Film précédent'], [1, 'next', 'Film suivant']]) {
     if (!filmAt(at + direction)) continue;
     const nav = document.createElement('button');
@@ -1298,6 +1488,7 @@ function renderCardView(film) {
   const body = document.createElement('div');
   body.className = 'card-body';
   body.append(buildSigRow(film, signature));
+  body.append(buildTextBlock(film));
 
   const rule = document.createElement('div');
   rule.className = 'rule';
@@ -1332,7 +1523,7 @@ function refresh(film) {
   // Pendant l'écriture, il n'y a ni signature ni réactions à l'écran.
   if (cardEl_.hidden || current !== film || state.composing) return;
   const signature = signatureOf(film);
-  const mark = state.marks[film.id];
+  const mark = state.marks[keyOf(film)];
 
   const sig = cardEl_.querySelector('.sig');
   if (sig) sig.replaceWith(buildSigRow(film, signature));
@@ -1350,9 +1541,9 @@ function refresh(film) {
 /** Dans le fil, on ne recharge pas les vidéos : on corrige les cartes visées. */
 function refreshReels(film) {
   const signature = signatureOf(film);
-  const mark = state.marks[film.id];
+  const mark = state.marks[keyOf(film)];
 
-  for (const card of wallEl.querySelectorAll('.reel[data-id="' + film.id + '"]')) {
+  for (const card of wallEl.querySelectorAll('.reel[data-id="' + keyOf(film) + '"]')) {
     const sig = card.querySelector('.reel__sig');
     if (sig) {
       sig.replaceChildren(...signature
@@ -1465,7 +1656,7 @@ function openMirror() {
   const removed = new Map();
 
   for (const [id, own] of Object.entries(state.reactions)) {
-    const film = state.films.get(Number(id));
+    const film = state.films.get(id);
     if (!film || !own.length) continue;
     const base = proposed(film);
     for (const stickerId of own) if (!base.includes(stickerId)) added.set(stickerId, (added.get(stickerId) || 0) + 1);
