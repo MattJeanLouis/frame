@@ -36,6 +36,7 @@ if (!process.env.TMDB_TOKEN) {
 
 const { default: relais } = await import('../netlify/functions/tmdb.mjs');
 const { default: profil } = await import('../netlify/functions/profil.mjs');
+const { default: liste } = await import('../netlify/functions/liste.mjs');
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -54,7 +55,11 @@ const serveur = createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
 
   /* Les fonctions, exactement aux chemins que Netlify leur donne. */
-  const FONCTIONS = { '/.netlify/functions/tmdb': relais, '/.netlify/functions/profil': profil };
+  const FONCTIONS = {
+    '/.netlify/functions/tmdb': relais,
+    '/.netlify/functions/profil': profil,
+    '/.netlify/functions/liste': liste
+  };
   if (FONCTIONS[url.pathname]) {
     try {
       const entrant = req.method === 'POST' || req.method === 'PUT'
@@ -112,6 +117,6 @@ serveur.listen(PORT, () => {
   console.log('\n  FRAME — version publiée, servie localement');
   console.log('  ─────────────────────────────────────────────');
   console.log('  http://localhost:' + PORT + '/');
-  console.log('  fonctions  /.netlify/functions/tmdb  et  /profil');
+  console.log('  fonctions  tmdb · profil · liste');
   console.log('  ─────────────────────────────────────────────\n');
 });

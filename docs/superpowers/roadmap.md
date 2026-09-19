@@ -251,7 +251,74 @@ place. Zéro exception.
 
 ---
 
-## 6. Publication
+## 6. Ma liste : ne rien perdre, et l'organiser
+
+### Le problème, posé par Matt
+
+« Je veux pas perdre ma watchlist. » La crainte était juste et concrète : la
+watchlist vit dans le `localStorage` d'une adresse donnée, et le site publié est
+une AUTRE adresse — donc un autre stockage, vide. Il n'y avait aucun pont.
+
+### Trois filets
+
+**Le fichier.** Exporter télécharge un JSON, importer le relit. C'est la seule
+sauvegarde qui ne dépend de personne, et le seul pont entre deux adresses.
+L'import ne remplace pas : il FUSIONNE, avec la même règle que la
+synchronisation — le plus récent gagne, film par film.
+
+**Le code de synchronisation.** Déjà là.
+
+**Le lien de partage.** Une copie en lecture seule, sous un second code.
+
+Ruling: une sauvegarde qui dépend d'un service n'est pas une sauvegarde — coût
+si faux : le jour où le service disparaît, tout disparaît avec lui.
+
+### L'écran
+
+« Ma liste » était une pastille de filtre parmi d'autres sur le mur, pas un
+endroit. C'est devenu un écran : groupé par état dans l'ordre où on veut lire
+(à voir d'abord), triable, cherchable, avec le nombre par état. La pastille
+d'en-tête remplace « Mon miroir », qui reste accessible depuis le profil — là où
+sont déjà les choses personnelles.
+
+Ruling: cinq blocs dans un en-tête, c'est le maximum — coût si faux : un sixième
+bouton à ajouter, et plus rien qui tienne sur un téléphone.
+
+### Le partage expose une liste blanche
+
+Le document public est construit en ÉNUMÉRANT ce qui sort — affiche, titre,
+année, type, état, note publique — et non en retirant ce qui ne doit pas sortir.
+La différence compte : si j'écris « enlève les commentaires », le jour où
+j'ajoute un champ au document privé, il part en ligne sans que personne ne s'en
+aperçoive.
+
+Ruling: une liste blanche reste sûre quand le modèle change, une liste noire non
+— coût si faux : un commentaire intime publié à l'insu de tout le monde.
+
+Vérifié sur le document réellement servi : 9 champs exposés, ni `overview`, ni
+`keywords`, ni commentaires, ni avis — et le commentaire écrit pour le test
+n'apparaît nulle part dans la réponse du serveur.
+
+### Ce qui est vérifié
+
+Export des quatre marques et du commentaire, **import sur un navigateur vierge**
+(les quatre films arrivent), la liste groupée par état, le tri qui change l'ordre
+d'un groupe, la recherche qui filtre, le lien de partage ouvert dans un troisième
+navigateur qui n'a jamais vu l'application — la liste s'ouvre seule, nomme son
+propriétaire, et n'expose aucun commentaire. Un code inventé le dit sans rien
+montrer.
+
+### Ce qui reste ouvert
+
+- **Le partage est une COPIE.** Il faut republier après avoir changé sa liste.
+- **« Arrêter le partage » n'oublie que le lien local** : le document reste
+  lisible par qui connaît le code. Il n'y a pas de révocation côté serveur.
+- **Pas de nom sur le lien** au-delà de celui du profil, et pas de description.
+- **L'import ne se souvient pas** de ce qui vient d'où : on ne peut pas annuler.
+
+---
+
+## 7. Publication
 
 Le dépôt est **public** : <https://github.com/MattJeanLouis/frame>, branche `main`.
 Le site est prêt pour Netlify (`netlify.toml`), mais **pas encore déployé** : il
@@ -309,7 +376,7 @@ grille à deux colonnes, fiche à 44 px par état.
 
 ---
 
-## 7. Comment on vérifie
+## 8. Comment on vérifie
 
 Ce qui compte n'est pas qu'un test passe, c'est que l'application fasse ce qu'on
 croit qu'elle fait. Les scripts de `.superpowers/verify/` pilotent Chrome en
@@ -325,6 +392,7 @@ node verif-sagas-dispo.mjs        # sagas, téléphone
 node verif-soiree.mjs             # le mode Soirée, à DEUX navigateurs
 node verif-publie.mjs             # la version construite, servie comme Netlify
 node verif-profil.mjs             # la synchronisation, entre DEUX navigateurs
+node verif-watchlist.mjs          # export, import, lien de partage à TROIS navigateurs
 ```
 
 `verif-publie.mjs` a besoin de `npm run build` puis `npm run servir-dist` : il

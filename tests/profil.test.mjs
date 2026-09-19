@@ -10,7 +10,8 @@ import assert from 'node:assert/strict';
 import {
   codeProfil, normaliserCode, codeValide, codeLisible,
   documentDe, documentVide, estDocument, fusionner, etatDe, differences,
-  cleHorodatage, LONGUEUR_CODE
+  cleHorodatage, LONGUEUR_CODE,
+  listePublique, estListe, ranger, versFichier, depuisFichier, ORDRE_ETATS
 } from '../src/profil.js';
 
 /* ── Le code ──────────────────────────────────────────────────────────────── */
@@ -198,4 +199,148 @@ test('les différences se comptent, pour pouvoir le dire à l’écran', () => {
 test('la clé d’horodatage sépare bien la nature du film', () => {
   assert.equal(cleHorodatage('marque', 'tv:42'), 'marque:tv:42');
   assert.equal(LONGUEUR_CODE, 12);
+});
+
+/* ── La liste publique ────────────────────────────────────────────────────── */
+
+test('la liste publique ne contient QUE ce qu’on accepte de montrer', () => {
+  /* Le point qui compte : c'est une liste blanche. Un champ qu'on ajouterait
+     demain au document privé ne doit pas se retrouver en ligne tout seul. */
+  const prive = documentDe(etatExemple(), { nom: 'Matt', avatar: '🦖' }, 500);
+  prive.films['movie:1'].overview = 'Un résumé confidentiel';
+  prive.films['movie:1'].keywords = ['secret'];
+  const publique = listePublique(prive, { nom: 'Matt', avatar: '🦖' });
+  const fiche = publique.titres['movie:1'];
+  assert.equal(fiche.title, 'Dune');
+  assert.equal(fiche.etat, 'love');
+  assert.equal(fiche.overview, undefined, 'le résumé ne sort pas');
+  assert.equal(fiche.keywords, undefined, 'les mots-clés ne sortent pas');
+  assert.equal(publique.commentaires, undefined, 'les commentaires ne sortent pas');
+  assert.equal(publique.avis, undefined, 'les signatures ne sortent pas');
+  assert.equal(publique.marques, undefined);
+  assert.equal(publique.horodatages, undefined);
+});
+
+test('un film sans état n’entre pas dans la liste publique', () => {
+  const doc = documentDe({
+    reactions: {}, marks: {}, comments: {},
+    films: { 'movie:1': { id: 1, title: 'Sans état' }, 'movie:2': { id: 2, title: 'Avec état' } },
+    horodatages: {}
+  }, {}, 1);
+  doc.marques = { 'movie:2': 'want' };
+  const publique = listePublique(doc);
+  assert.equal(Object.keys(publique.titres).length, 1);
+  assert.equal(publique.titres['movie:2'].title, 'Avec état');
+});
+
+test('une liste publique vide reste une liste valide', () => {
+  const publique = listePublique(documentVide());
+  assert.equal(estListe(publique), true);
+  assert.deepEqual(publique.titres, {});
+});
+
+test('ce qui n’est pas une liste est refusé', () => {
+  assert.equal(estListe(null), false);
+  assert.equal(estListe({ version: 1 }), false);
+  assert.equal(estListe(listePublique(documentVide())), true);
+});
+
+/* ── Ranger la liste ──────────────────────────────────────────────────────── */
+
+const listeAvec = titres => ({ version: 1, modifie: 1, profil: { nom: 'Matt', avatar: '' }, titres });
+
+test('la liste se range par état, dans l’ordre qu’on veut lire', () => {
+  const liste = listeAvec({
+    'movie:1': { id: 1, title: 'À voir un', etat: 'want', at: 10 },
+    'movie:2': { id: 2, title: 'Aimé', etat: 'love', at: 20 },
+    'movie:3': { id: 3, title: 'À voir deux', etat: 'want', at: 30 }
+  });
+  const groupes = ranger(liste);
+  assert.deepEqual(groupes.map(g => g.etat), ['want', 'love'], '« à voir » avant « j’adore »');
+  assert.deepEqual(groupes[0].films.map(f => f.title), ['À voir deux', 'À voir un'], 'le plus récent d’abord');
+});
+
+test('un état sans film ne fait pas un groupe vide', () => {
+  const groupes = ranger(listeAvec({ 'movie:1': { id: 1, title: 'Seul', etat: 'seen', at: 1 } }));
+  assert.equal(groupes.length, 1);
+  assert.equal(groupes[0].etat, 'seen');
+});
+
+test('on peut ne regarder qu’un état', () => {
+  const liste = listeAvec({
+    'movie:1': { id: 1, title: 'A', etat: 'want', at: 1 },
+    'movie:2': { id: 2, title: 'B', etat: 'love', at: 2 }
+  });
+  const groupes = ranger(liste, { etat: 'love' });
+  assert.equal(groupes.length, 1);
+  assert.equal(groupes[0].films[0].title, 'B');
+});
+
+test('la recherche ignore la casse et les accents', () => {
+  const liste = listeAvec({
+    'movie:1': { id: 1, title: 'Le Fabuleux Destin', etat: 'love', at: 1 },
+    'movie:2': { id: 2, title: 'Dune', etat: 'want', at: 2 }
+  });
+  assert.equal(ranger(liste, { recherche: 'fabuleux' })[0].films[0].title, 'Le Fabuleux Destin');
+  assert.equal(ranger(liste, { recherche: 'FABULEUX' })[0].films.length, 1);
+  assert.equal(ranger(liste, { recherche: 'dun' })[0].films[0].title, 'Dune');
+  assert.equal(ranger(liste, { recherche: 'zzz' }).length, 0);
+});
+
+test('les tris changent l’ordre sans changer les groupes', () => {
+  const liste = listeAvec({
+    'movie:1': { id: 1, title: 'Zèbre', etat: 'want', at: 10, vote_average: 5 },
+    'movie:2': { id: 2, title: 'Abeille', etat: 'want', at: 20, vote_average: 9 }
+  });
+  assert.equal(ranger(liste, { tri: 'alpha' })[0].films[0].title, 'Abeille');
+  assert.equal(ranger(liste, { tri: 'note' })[0].films[0].title, 'Abeille');
+  assert.equal(ranger(liste, { tri: 'ancien' })[0].films[0].title, 'Zèbre');
+  assert.equal(ranger(liste, { tri: 'recent' })[0].films[0].title, 'Abeille');
+});
+
+test('ranger une liste absente ne plante pas', () => {
+  assert.deepEqual(ranger(null), []);
+  assert.deepEqual(ranger({}), []);
+});
+
+/* ── Emporter et rapporter ────────────────────────────────────────────────── */
+
+test('un fichier exporté se relit à l’identique', () => {
+  const depart = documentDe(etatExemple(), { nom: 'Matt', avatar: '🦖' }, 500);
+  const texte = versFichier(depart);
+  assert.match(texte, /"application": "FRAME"/);
+  const relu = depuisFichier(texte);
+  assert.equal(relu.erreur, undefined);
+  assert.deepEqual(relu.doc.marques, depart.marques);
+  assert.deepEqual(relu.doc.avis, depart.avis);
+  assert.deepEqual(relu.doc.films, depart.films);
+  assert.deepEqual(relu.doc.horodatages, depart.horodatages);
+});
+
+test('un fichier étranger est refusé avec une phrase, pas par une exception', () => {
+  assert.match(depuisFichier('pas du json').erreur, /JSON/);
+  assert.match(depuisFichier('{"nourriture":"pizza"}').erreur, /FRAME/);
+  assert.match(depuisFichier('null').erreur, /FRAME/);
+  assert.match(depuisFichier('{"doc":{"version":42}}').erreur, /FRAME/);
+});
+
+test('un fichier exporté puis fusionné ne perd rien', () => {
+  /* Le vrai scénario : le portable exporte, le nouveau appareil importe, et
+     fusionne avec ce qu'il avait déjà. */
+  const ancien = documentDe(etatExemple(), {}, 100);
+  const nouveau = documentDe({
+    reactions: {}, marks: { 'movie:9': 'want' }, comments: {},
+    films: { 'movie:9': { id: 9, title: 'Autre' } }, horodatages: { 'marque:movie:9': 50 }
+  }, {}, 200);
+  const relu = depuisFichier(versFichier(ancien)).doc;
+  const fusion = fusionner(nouveau, relu);
+  assert.equal(fusion.marques['movie:1'], 'love', 'ce qui vient du fichier est là');
+  assert.equal(fusion.marques['movie:9'], 'want', 'ce qui était déjà là reste');
+});
+
+test('la liste publique d’un document exporté se reconstruit', () => {
+  const doc = depuisFichier(versFichier(documentDe(etatExemple(), { nom: 'Matt' }, 1))).doc;
+  const publique = listePublique(doc);
+  assert.equal(publique.titres['movie:1'].title, 'Dune');
+  assert.equal(publique.profil.nom, 'Matt');
 });

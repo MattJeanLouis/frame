@@ -17,7 +17,8 @@ import { createDemoClient, DEMO_POOLS } from '../../src/demo.js';
 import { loadCredential, getKeywordCache, setKeywordId } from '../../src/storage.js';
 import { selectMovies } from '../../src/engine.js';
 import { initRoom, ouvrirRoom, fermerRoom } from './soiree.js';
-import { initProfil, ouvrirProfil, fermerProfil } from './profil.js';
+import { initProfil, ouvrirProfil, fermerProfil, profilCourant } from './profil.js';
+import { initListe, ouvrirListe, fermerListe, estOuverte as listeOuverte } from './liste.js';
 
 const STORE_KEY = 'frame.v2';
 /* Les six états, sur un seul axe : ce que tu dis d'un film, en un mot, d'une
@@ -82,6 +83,7 @@ const wallEl = el('wall');
 const cardEl_ = el('card');
 const soireeEl = el('soiree');
 const profilEl = el('profil');
+const listeEl = el('liste-ecran');
 const mirrorEl = el('mirror');
 const statusEl = el('status');
 const progressEl = el('progress');
@@ -1157,7 +1159,7 @@ function setRefinements(open) {
 }
 
 function initCatalogueLayout() {
-  el('bar').insertBefore(el('tools'), el('btn-mirror'));
+  el('bar').insertBefore(el('tools'), el('btn-profil'));
   el('collection-filters').append(el('row-liste'));
   appEl.append(el('filter-backdrop'), el('refinements'));
   const dock = el('dock');
@@ -2854,6 +2856,14 @@ async function openCard(film) {
   if (!film) return;
   current = film;
   state.paletteOpen = false;
+  /* On n'écrit jamais sur un film qu'on vient d'ouvrir.
+   *
+   * Le mode écriture est un état GLOBAL, et rien ne le remettait à zéro en
+   * changeant de film : après un commentaire, la fiche suivante s'ouvrait
+   * directement dans le compositeur, avec le clavier et les cartons, au lieu de
+   * montrer le film. On ne s'en aperçoit qu'en enchaînant deux films — ce que
+   * fait un test, rarement une personne. */
+  state.composing = false;
 
   if (!film.__detail && state.live) {
     renderCardView(film);                       // premier rendu avec ce qu'on a
@@ -3714,7 +3724,9 @@ async function start() {
     ? createClient({ credential: state.credential, proxy: state.relais ? RELAIS : null })
     : createDemoClient();
 
-  el('btn-mirror').addEventListener('click', openMirror);
+  /* Le miroir n'est plus dans l'en-tête — cinq blocs suffisent — mais il reste
+     accessible depuis le profil, là où sont les choses personnelles. */
+  el('btn-mirror')?.addEventListener('click', openMirror);
 
   /* Le mode Soirée. Il ne connaît du catalogue que ce qu'on lui donne : les
      films affichés au moment où on ouvre la soirée deviennent le deck proposé.
@@ -3770,6 +3782,47 @@ async function start() {
   });
   el('btn-profil').addEventListener('click', () => {
     if (profilEl.hidden) ouvrirProfil(); else fermerProfil();
+  });
+
+  /* Ma liste, organisée. Elle lit l'état local et sait en retirer un film ; le
+     reste — le rangement, les groupes, le partage — vit dans son module. */
+  initListe({
+    etat: () => ({
+      marks: state.marks, films: state.mesFilms,
+      reactions: state.reactions, comments: state.comments, horodatages: state.horodatages
+    }),
+    profil: () => profilCourant(),
+    retirer: cle => {
+      delete state.marks[cle];
+      state.horodatages['marque:' + cle] = Date.now();
+      saveStore();
+      renderListe(); renderFilters();
+    },
+    annoncer: message => announce(message),
+    /* Une marque peut dater d'avant qu'on garde les fiches : on va les chercher
+       chez TMDB, sinon ces films manqueraient à la liste alors qu'ils sont bien
+       marqués. C'est le cas de tout ce qui a été marqué avant cette version. */
+    completer: async cles => {
+      await mapLimit(cles, 4, async cle => {
+        const coupe = cle.indexOf(':');
+        const kind = cle.slice(0, coupe);
+        const id = cle.slice(coupe + 1);
+        try {
+          const detail = await api('/' + (kind || 'movie') + '/' + id);
+          if (detail && detail.id) rememberFilm(normalize(detail, kind || 'movie'));
+        } catch { /* un film introuvable reste absent, sans casser la liste */ }
+      });
+      saveStore();
+    },
+    ouvrir: () => {
+      if (!cardEl_.hidden) closeCard();
+      if (!soireeEl.hidden) fermerRoom();
+      if (!profilEl.hidden) fermerProfil();
+    },
+    fermer: () => el('btn-liste')?.focus()
+  });
+  el('btn-liste').addEventListener('click', () => {
+    if (listeEl.hidden) ouvrirListe(); else fermerListe();
   });
   wallEl.addEventListener('scroll', () => {
     updateProgress();

@@ -174,6 +174,107 @@ export function etatDe(doc) {
   };
 }
 
+/* ── La liste publique ────────────────────────────────────────────────────── */
+
+/**
+ * Ce qu'on accepte de montrer, et RIEN d'autre.
+ *
+ * C'est une liste BLANCHE, pas un retrait. La différence compte : si j'écris
+ * « enlève les commentaires », le jour où j'ajoute un champ au document privé il
+ * part en ligne sans que personne ne s'en aperçoive. En énumérant ce qui SORT,
+ * un champ nouveau reste privé par défaut.
+ *
+ * On ne garde donc que de quoi dessiner une affiche et la nommer : ni résumé, ni
+ * mots-clés, ni commentaire, ni signature, ni le détail de ce qu'on a ressenti.
+ */
+const CHAMPS_PUBLICS = ['id', 'kind', 'title', 'date', 'poster_path', 'vote_average', 'genre_ids', 'at'];
+
+export function listePublique(doc, profil = {}) {
+  const d = estDocument(doc) ? doc : documentVide();
+  const titres = {};
+  for (const [cle, film] of Object.entries(d.films)) {
+    const etat = d.marques[cle];
+    /* Sans état, un film n'est pas dans la liste : il n'y a rien à montrer. */
+    if (!etat || !film) continue;
+    const public_ = { etat };
+    for (const champ of CHAMPS_PUBLICS) if (film[champ] !== undefined) public_[champ] = film[champ];
+    titres[cle] = public_;
+  }
+  return {
+    version: VERSION,
+    modifie: Number(d.modifie) || 0,
+    profil: {
+      nom: String(profil.nom || d.profil?.nom || '').slice(0, 40),
+      avatar: String(profil.avatar || d.profil?.avatar || '').slice(0, 8)
+    },
+    titres
+  };
+}
+
+export const estListe = doc => Boolean(
+  doc && typeof doc === 'object' && doc.version === VERSION &&
+  doc.titres && typeof doc.titres === 'object' && doc.profil
+);
+
+/** Les six états, dans l'ordre où on veut les lire : ce qu'on veut voir d'abord. */
+export const ORDRE_ETATS = ['want', 'watching', 'seen', 'ok', 'love', 'nope'];
+
+/**
+ * La liste rangée : un groupe par état, et dans chaque groupe le plus récent
+ * d'abord. C'est ce que « organiser » veut dire — pas une soupe alphabétique.
+ */
+export function ranger(liste, { etat = null, recherche = '', tri = 'recent' } = {}) {
+  const titres = liste?.titres || {};
+  const mot = fold(recherche);
+  const groupes = [];
+  for (const id of ORDRE_ETATS) {
+    if (etat && id !== etat) continue;
+    const films = Object.entries(titres)
+      .filter(([, f]) => f.etat === id)
+      .map(([cle, f]) => ({ cle, ...f }))
+      .filter(f => !mot || fold(f.title).includes(mot));
+    if (!films.length) continue;
+    groupes.push({ etat: id, films: trierFilms(films, tri) });
+  }
+  return groupes;
+}
+
+const fold = v => String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+
+const COMPARER = {
+  recent: (a, b) => (b.at || 0) - (a.at || 0),
+  ancien: (a, b) => (a.at || 0) - (b.at || 0),
+  alpha: (a, b) => String(a.title || '').localeCompare(String(b.title || ''), 'fr'),
+  note: (a, b) => (b.vote_average || 0) - (a.vote_average || 0),
+  date: (a, b) => String(b.date || '').localeCompare(String(a.date || ''))
+};
+
+export const trierFilms = (films, tri = 'recent') => [...films].sort(COMPARER[tri] || COMPARER.recent);
+
+/* ── Emporter et rapporter ────────────────────────────────────────────────── */
+
+/**
+ * Le fichier qu'on télécharge.
+ *
+ * C'est la seule sauvegarde qui ne dépend de personne : ni d'un serveur, ni d'un
+ * navigateur, ni d'un code. C'est aussi ce qui permet de passer d'une adresse à
+ * une autre — `localhost` et le site publié sont deux stockages DIFFÉRENTS, et
+ * sans fichier il n'y a aucun pont entre les deux.
+ */
+export function versFichier(doc) {
+  const d = estDocument(doc) ? doc : documentVide();
+  return JSON.stringify({ application: 'FRAME', version: VERSION, exporte: new Date().toISOString(), doc: d }, null, 2);
+}
+
+/** Relire un fichier emporté. On refuse poliment ce qui n'en est pas un. */
+export function depuisFichier(texte) {
+  let brut;
+  try { brut = JSON.parse(texte); } catch { return { erreur: 'Ce fichier n’est pas du JSON.' }; }
+  const doc = brut?.doc && estDocument(brut.doc) ? brut.doc : (estDocument(brut) ? brut : null);
+  if (!doc) return { erreur: 'Ce fichier ne vient pas de FRAME, ou vient d’une version inconnue.' };
+  return { doc };
+}
+
 /** Ce que la fusion a apporté — pour pouvoir le dire à l'écran. */
 export function differences(avant, apres) {
   const compte = (a, b) => Object.keys(b).filter(cle => JSON.stringify(a?.[cle]) !== JSON.stringify(b?.[cle])).length;

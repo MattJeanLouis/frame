@@ -26,60 +26,11 @@
  * jamais dans le navigateur : le client reste sans aucune dépendance. Netlify
  * l'installe au moment de la construction.
  */
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
-import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { lire, ecrire, codeValide, codePropre, json } from '../lib/rangement.mjs';
 
-const RACINE = fileURLToPath(new URL('../..', import.meta.url));
-const LOCAL = join(RACINE, '.profils');
-
+const BAC = 'profils';
 const VERSION = 1;
-const LONGUEUR = 12;
 const TAILLE_MAX = 512 * 1024;   // un carnet de films, pas une médiathèque
-
-const signes = saisie => String(saisie || '').toUpperCase().replace(/[^A-Z0-9]/g, '').replace(/O/g, '0').replace(/I/g, '1');
-const codeValide = saisie => signes(saisie).length === LONGUEUR;
-const codePropre = saisie => signes(saisie);
-
-const json = (corps, statut = 200) => new Response(JSON.stringify(corps), {
-  status: statut,
-  headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' }
-});
-
-/* ── Le rangement ─────────────────────────────────────────────────────────── */
-
-let memoire = null;
-
-async function ouvrir() {
-  if (memoire) return memoire;
-  try {
-    const { getStore } = await import('@netlify/blobs');
-    /* Cohérence forte : on relit juste après avoir écrit. */
-    memoire = { genre: 'blobs', store: getStore({ name: 'profils', consistency: 'strong' }) };
-  } catch {
-    await mkdir(LOCAL, { recursive: true });
-    memoire = { genre: 'fichiers' };
-  }
-  return memoire;
-}
-
-async function lire(code) {
-  const ou = await ouvrir();
-  if (ou.genre === 'blobs') {
-    const brut = await ou.store.get(code);
-    if (brut === null) return null;
-    try { return JSON.parse(brut); } catch { return null; }
-  }
-  try { return JSON.parse(await readFile(join(LOCAL, code + '.json'), 'utf8')); }
-  catch { return null; }
-}
-
-async function ecrire(code, doc) {
-  const ou = await ouvrir();
-  const texte = JSON.stringify(doc);
-  if (ou.genre === 'blobs') { await ou.store.set(code, texte); return; }
-  await writeFile(join(LOCAL, code + '.json'), texte, 'utf8');
-}
 
 /* ── Les routes ───────────────────────────────────────────────────────────── */
 
@@ -94,7 +45,7 @@ export default async request => {
 
   try {
     if (request.method === 'GET') {
-      const doc = await lire(cle);
+      const doc = await lire(BAC, cle);
       /* Un profil qui n'existe pas n'est pas une erreur : c'est une première
          synchronisation. On répond 200 avec `null`. */
       return json({ doc });
@@ -110,8 +61,8 @@ export default async request => {
       if (texte.length > TAILLE_MAX) {
         return json({ erreur: 'Profil trop volumineux (' + Math.round(texte.length / 1024) + ' Ko).' }, 413);
       }
-      const existe = await lire(cle);
-      await ecrire(cle, doc);
+      const existe = await lire(BAC, cle);
+      await ecrire(BAC, cle, doc);
       return json({ ok: true, cree: !existe });
     }
 

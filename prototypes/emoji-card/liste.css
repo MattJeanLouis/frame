@@ -1,0 +1,179 @@
+/* ── Ma liste ────────────────────────────────────────────────────────────────
+   Un endroit pour parcourir ce qu'on a marqué : des groupes par état, des
+   affiches, et de quoi chercher. Le même écran sert en lecture seule quand
+   quelqu'un ouvre un lien de partage. */
+
+body.liste-ouverte { overflow: hidden; }
+
+#liste-ecran {
+  position: fixed;
+  inset: 0;
+  z-index: 65;
+  background: color-mix(in oklab, var(--c-bg) 96%, black);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+#liste-ecran[hidden] { display: none; }
+
+.liste {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 0 clamp(16px, 3vw, 40px) 56px;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.liste__barre {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 0 12px;
+  background: linear-gradient(var(--c-bg) 72%, transparent);
+}
+.liste__marque { font: 700 11px var(--ff-display); letter-spacing: 0.22em; color: var(--c-accent); margin-right: auto; }
+.liste__fermer {
+  width: 44px; height: 44px;
+  display: grid; place-items: center;
+  border: 1px solid #f1ede41c;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--c-text-dim);
+  font-size: 15px;
+  cursor: pointer;
+}
+.liste__fermer:hover { color: var(--c-text); background: var(--c-surface); }
+
+.liste__tete { display: flex; align-items: center; gap: 16px; }
+.liste__avatar {
+  width: 56px; height: 56px;
+  display: grid; place-items: center;
+  border: 1px solid #f1ede424;
+  border-radius: 6px;
+  background: var(--c-surface);
+  font-size: 26px;
+}
+.liste__titre { margin: 0; font: 500 clamp(22px, 3.4vw, 32px)/1.15 'Instrument Serif', serif; color: var(--c-text); }
+.liste__compte { font: 12px var(--ff-text); color: var(--c-text-dim); }
+
+/* ── Les commandes ────────────────────────────────────────────────────────── */
+
+.liste__commandes { display: flex; flex-direction: column; gap: 10px; }
+.liste__etats { display: flex; flex-wrap: wrap; gap: 6px; }
+.liste__puce {
+  min-height: 38px;
+  padding: 0 13px;
+  border: 1px solid #f1ede424;
+  border-radius: 999px;
+  background: var(--c-surface);
+  color: var(--c-text-dim);
+  font: 12.5px var(--ff-text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.liste__puce:hover { color: var(--c-text); background: var(--c-raised); }
+.liste__puce.est-choisi { border-color: var(--c-accent); color: var(--c-text); background: color-mix(in oklab, var(--c-accent) 16%, var(--c-surface)); }
+
+.liste__ligne-commandes { display: flex; flex-wrap: wrap; gap: 10px; }
+.liste__recherche {
+  flex: 1 1 240px;
+  min-height: 46px;
+  padding: 0 13px;
+  border: 1px solid #f1ede424;
+  border-radius: 4px;
+  background: var(--c-surface);
+  color: var(--c-text);
+  font: 14px var(--ff-text);
+}
+.liste__recherche:focus { outline: 2px solid var(--c-accent); outline-offset: 1px; }
+.liste__tri {
+  min-height: 46px;
+  padding: 0 30px 0 12px;
+  border: 1px solid #f1ede424;
+  border-radius: 4px;
+  background: var(--c-surface);
+  color: var(--c-text);
+  font: 13px var(--ff-text);
+  cursor: pointer;
+}
+
+/* ── Les groupes ──────────────────────────────────────────────────────────── */
+
+.liste__groupe { display: flex; flex-direction: column; gap: 10px; }
+.liste__groupe-titre {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  margin: 8px 0 0;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #f1ede41c;
+  font: 600 14px var(--ff-text);
+  color: var(--c-text);
+}
+.liste__groupe-signe { font-size: 16px; }
+.liste__groupe-compte { margin-left: auto; font: 12px var(--ff-text); color: var(--c-text-dim); font-variant-numeric: tabular-nums; }
+
+.liste__grille {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+}
+.liste__film {
+  position: relative;
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid #f1ede414;
+  border-radius: 5px;
+  background: var(--c-surface);
+}
+.liste__affiche { width: 100%; aspect-ratio: 2 / 3; object-fit: cover; border-radius: 3px; display: block; background: var(--c-raised); }
+.liste__affiche--vide { background: repeating-linear-gradient(135deg, #1c222b 0 8px, #171c23 8px 16px); }
+.liste__film-texte { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.liste__film-titre { font: 500 13.5px/1.3 var(--ff-text); color: var(--c-text); }
+.liste__film-meta { font: 10.5px var(--ff-text); letter-spacing: 0.06em; text-transform: uppercase; color: var(--c-text-dim); }
+
+.liste__retirer {
+  grid-column: 1 / -1;
+  min-height: 36px;
+  border: 0;
+  border-top: 1px solid #f1ede412;
+  background: transparent;
+  color: var(--c-text-dim);
+  font: 11.5px var(--ff-text);
+  cursor: pointer;
+  text-align: left;
+}
+.liste__retirer:hover { color: #e07a5f; }
+
+.liste__note { margin: 0; font: 13.5px/1.55 var(--ff-text); color: var(--c-text-dim); max-width: 62ch; }
+.liste__alerte {
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in oklab, #e07a5f 60%, transparent);
+  border-radius: 4px;
+  background: color-mix(in oklab, #e07a5f 14%, transparent);
+  color: var(--c-text);
+  font: 13px/1.5 var(--ff-text);
+}
+
+@media (max-width: 560px) {
+  .liste { gap: 14px; padding-bottom: 32px; }
+  /* Deux colonnes d'affiches au pouce : c'est ce qui donne envie de parcourir. */
+  .liste__grille { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 8px; }
+  .liste__film { grid-template-columns: 1fr; gap: 8px; padding: 8px; }
+  .liste__film .liste__affiche { width: 100%; }
+  .liste__film-titre { font-size: 12.5px; }
+  .liste__tri { width: 100%; }
+  .liste__puce { min-height: 40px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .liste__puce { transition: none; }
+}

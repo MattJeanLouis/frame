@@ -23,6 +23,38 @@ Deux variantes utiles :
 - http://localhost:8090/?mode=liste — la même application avec une grille de chips
   au lieu de la toile, pour comparer les deux à l'aveugle.
 
+## Ne pas perdre sa liste
+
+Trois filets, du plus simple au plus sûr :
+
+**1. Le fichier.** Profil → *Exporter ma liste* télécharge un fichier JSON. C'est
+la seule sauvegarde qui ne dépend de personne — ni d'un serveur, ni d'un
+navigateur, ni d'un code. **C'est aussi le seul pont entre deux adresses** :
+`localhost:8090` et le site publié sont deux stockages différents, et sans
+fichier il n'y en a aucun. Sur l'autre adresse : *Importer un fichier*.
+
+L'import ne remplace rien : il rejoint. Ce qui est dans le fichier s'ajoute à ce
+que tu as, et sur un même film c'est la modification la plus récente qui gagne.
+
+**2. Le code de synchronisation.** Voir juste en dessous.
+
+**3. Le lien de partage.** Une copie de ta liste, en lecture seule, sous un
+second code.
+
+## Ma liste, organisée
+
+**Ma liste** dans l'en-tête ouvre la liste entière : groupée par état — à voir,
+en cours, vu, ok, j'adore, pas aimé — triable et cherchable. Chaque état porte
+son nombre, chaque film son affiche.
+
+Depuis le profil, **Montrer ma liste** crée un lien à envoyer. Ce lien ouvre la
+liste en lecture seule, chez n'importe qui, sans compte.
+
+Ce lien est un **second code**, distinct du code de synchronisation : le premier
+ÉCRIT, le second ne fait que LIRE. Et le document qu'il ouvre ne contient que des
+affiches et des états — ni commentaires, ni avis, ni résumé, ni mots-clés. Ce
+n'est pas qu'on les cache : ils n'ont jamais été envoyés.
+
 ## Ton profil, et tes deux appareils
 
 Pas d'inscription, pas de mot de passe, pas d'adresse e-mail. Un **code** de

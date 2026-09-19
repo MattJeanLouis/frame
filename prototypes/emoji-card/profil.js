@@ -12,10 +12,12 @@
  */
 import {
   codeProfil, codeLisible, codeValide, normaliserCode,
-  documentDe, documentVide, fusionner, etatDe, differences
+  documentDe, documentVide, fusionner, etatDe, differences,
+  listePublique, versFichier, depuisFichier
 } from '../../src/profil.js';
 
 const RELAIS = '/.netlify/functions/profil';
+const RELAIS_LISTE = '/.netlify/functions/liste';
 const CLE = 'frame.profil';
 
 /* Une douzaine de figures : assez pour se reconnaître, pas une palette. */
@@ -23,7 +25,7 @@ const AVATARS = ['🦖', '🐉', '👽', '🦊', '🐙', '🌙', '🔥', '🧭',
 
 let deps = { etat: () => ({}), appliquer: () => { }, annoncer: () => { } };
 let racine = null;
-let etat = { nom: '', avatar: '', code: '', occupe: false, erreur: '', message: '', dernier: null, saisie: false };
+let etat = { nom: '', avatar: '', code: '', occupe: false, erreur: '', message: '', dernier: null, saisie: false, partage: '' };
 
 /* ── Le stockage local de l'identité ──────────────────────────────────────── */
 
@@ -142,7 +144,12 @@ function dessiner() {
   }
 
   enveloppe.append(blocIdentite());
+  enveloppe.append(blocSauvegarde());
   enveloppe.append(blocSynchronisation());
+  /* Le partage est INDÉPENDANT de la synchronisation : on peut vouloir montrer
+     sa liste sans relier d'appareil. L'enfermer dans le bloc de synchronisation
+     le rendait invisible tant qu'on n'avait pas créé de code. */
+  enveloppe.append(blocPartage());
   /* Le champ de saisie fait partie du dessin : sans cela, une erreur de code le
      faisait disparaître et il fallait tout recommencer. */
   if (etat.saisie) enveloppe.append(blocSaisie());
@@ -195,6 +202,66 @@ function blocIdentite() {
     choix.append(b);
   }
   bloc.append(choix);
+  return bloc;
+}
+
+/**
+ * Emporter, rapporter, montrer.
+ *
+ * L'export est la seule sauvegarde qui ne dépend de PERSONNE : ni d'un serveur,
+ * ni d'un navigateur, ni d'un code. C'est aussi le seul pont entre deux adresses
+ * — `localhost` et le site publié sont deux stockages différents, et sans
+ * fichier il n'y en a aucun.
+ */
+function blocSauvegarde() {
+  const bloc = h('section', 'profil__bloc');
+  const total = Object.keys(deps.etat().marks || {}).length;
+  bloc.append(h('h2', 'profil__titre', 'Ta liste'));
+  bloc.append(h('p', 'profil__note', total
+    ? total + ' titre' + (total > 1 ? 's' : '') + ' dans ta liste. Exporte-la avant de changer d’adresse : ' +
+      'le site publié et cette page ne partagent pas le même rangement.'
+    : 'Ta liste est vide pour l’instant.'));
+
+  const actions = h('div', 'profil__actions');
+
+  actions.append(bouton('profil__bouton', 'Exporter ma liste', () => {
+    const texte = versFichier(documentDe(deps.etat(), profilLocal(), Date.now()));
+    const lien = document.createElement('a');
+    lien.href = URL.createObjectURL(new Blob([texte], { type: 'application/json' }));
+    lien.download = 'frame-' + new Date().toISOString().slice(0, 10) + '.json';
+    lien.click();
+    setTimeout(() => URL.revokeObjectURL(lien.href), 4000);
+    aviser('Fichier exporté. Garde-le : c’est ta sauvegarde.', 'ok');
+  }));
+
+  const champ = h('input');
+  champ.type = 'file';
+  champ.accept = 'application/json,.json';
+  champ.className = 'profil__fichier';
+  champ.addEventListener('change', async () => {
+    const fichier = champ.files?.[0];
+    if (!fichier) return;
+    try {
+      const lu = depuisFichier(await fichier.text());
+      if (lu.erreur) { aviser(lu.erreur); return; }
+      const avant = deps.etat();
+      const fusion = fusionner(documentDe(avant, profilLocal(), 0), lu.doc);
+      const apres = etatDe(fusion);
+      const change = differences(avant, apres);
+      deps.appliquer(apres);
+      const n = change.marques + change.avis + change.commentaires + change.films;
+      aviser(n ? 'Importé : ' + n + ' titre' + (n > 1 ? 's' : '') + ' rejoint' + (n > 1 ? 's' : '') + '.'
+        : 'Rien de neuf dans ce fichier — tout y était déjà.', 'ok');
+    } catch (e) { aviser('Lecture impossible : ' + e.message); }
+    finally { champ.value = ''; }
+  });
+  actions.append(bouton('profil__bouton', 'Importer un fichier', () => champ.click()));
+  actions.append(champ);
+  bloc.append(actions);
+
+  bloc.append(h('p', 'profil__note profil__note--fine',
+    'L’import ne remplace rien : il rejoint. Ce qui est dans le fichier s’ajoute à ce que tu as ici, ' +
+    'et sur un même film c’est la modification la plus récente qui l’emporte.'));
   return bloc;
 }
 
@@ -258,6 +325,98 @@ function blocSynchronisation() {
   return bloc;
 }
 
+/**
+ * Montrer sa liste — avec un AUTRE code.
+ *
+ * Le code de synchronisation ÉCRIT : le donner pour montrer sa liste
+ * reviendrait à donner les clés de son carnet. Le code de partage ne fait que
+ * LIRE un document séparé, qui ne contient que des affiches et des états. Ni
+ * commentaires, ni avis, ni mots-clés : ils n'ont jamais été envoyés.
+ */
+function blocPartage() {
+  const zone = h('section', 'profil__bloc profil__partage');
+  zone.append(h('h2', 'profil__titre', 'Montrer ma liste'));
+  const code = etat.partage || '';
+
+  if (!code) {
+    zone.append(h('p', 'profil__note',
+      'Un lien que tu peux envoyer : il montre ta liste — les affiches et les états — ' +
+      'et rien d’autre. Ce n’est pas ton code de synchronisation, et il ne permet pas d’y écrire.'));
+    zone.append(bouton('profil__bouton', 'Créer un lien de partage', async () => {
+      if (etat.occupe) return;
+      etat.occupe = true; etat.erreur = '';
+      try {
+        const nouveau = codeProfil();
+        await publierListe(nouveau);
+        etat.partage = nouveau;
+        retenir({ partage: nouveau });
+        const lien = lienPartage(nouveau);
+        try { await navigator.clipboard.writeText(lien); aviser('Lien copié : ' + lien, 'ok'); }
+        catch { aviser('Lien créé : ' + lien, 'ok'); }
+      } catch (e) { aviser(e.message); }
+      finally { etat.occupe = false; dessiner(); }
+    }, { desactive: etat.occupe }));
+    return zone;
+  }
+
+  const lien = lienPartage(code);
+  const bloc = h('div', 'profil__code-bloc');
+  bloc.append(h('span', 'profil__etiquette', 'Ton lien de partage'));
+  const champ = h('input');
+  champ.type = 'text';
+  champ.readOnly = true;
+  champ.value = lien;
+  champ.className = 'profil__lien-champ';
+  champ.setAttribute('aria-label', 'Lien de partage de ta liste');
+  champ.addEventListener('focus', () => champ.select());
+  bloc.append(champ);
+  bloc.append(bouton('profil__bouton profil__bouton--petit', 'Copier', async () => {
+    try { await navigator.clipboard.writeText(lien); aviser('Lien copié.', 'ok'); }
+    catch { aviser('Copie impossible. Le lien est ' + lien, 'ok'); }
+  }));
+  zone.append(bloc);
+
+  const actions = h('div', 'profil__actions');
+  actions.append(bouton('profil__bouton', etat.occupe ? 'Publication…' : 'Republier ma liste',
+    async () => {
+      if (etat.occupe) return;
+      etat.occupe = true;
+      try {
+        const n = await publierListe(code);
+        aviser('Liste republiée : ' + n + ' titre' + (n > 1 ? 's' : '') + ' en ligne.', 'ok');
+      } catch (e) { aviser(e.message); }
+      finally { etat.occupe = false; dessiner(); }
+    }, { desactive: etat.occupe }));
+  actions.append(bouton('profil__lien', 'Arrêter le partage', () => {
+    etat.partage = ''; retenir({ partage: '' }); dessiner();
+  }));
+  zone.append(actions);
+  zone.append(h('p', 'profil__note profil__note--fine',
+    'Le lien publie une copie de ta liste au moment où tu le crées. Republie-le quand tu l’as changée. ' +
+    '« Arrêter le partage » oublie le lien ici — préviens ceux à qui tu l’as donné.'));
+  return zone;
+}
+
+const lienPartage = code =>
+  location.origin + location.pathname + '?liste=' + codeLisible(code).replace(/-/g, '');
+
+async function publierListe(code) {
+  const doc = documentDe(deps.etat(), profilLocal(), Date.now());
+  const liste = listePublique(doc, profilLocal());
+  const n = Object.keys(liste.titres).length;
+  if (!n) throw new Error('Ta liste est vide : il n’y a rien à publier.');
+  let r;
+  try {
+    r = await fetch(RELAIS_LISTE + '?code=' + encodeURIComponent(code), {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ liste })
+    });
+  } catch { throw new Error('Le serveur ne répond pas. Le partage a besoin d’Internet.'); }
+  const données = await r.json().catch(() => null);
+  if (!r.ok) throw new Error(données?.erreur || ('Le serveur a répondu ' + r.status));
+  return n;
+}
+
 /* ── Entrées et sorties ───────────────────────────────────────────────────── */
 
 export function initProfil(dependances = {}) {
@@ -268,6 +427,7 @@ export function initProfil(dependances = {}) {
   etat.nom = garde.nom || '';
   etat.avatar = garde.avatar || '';
   etat.code = garde.code || '';
+  etat.partage = garde.partage || '';
 }
 
 export function ouvrirProfil() {
@@ -311,3 +471,6 @@ function blocSaisie() {
 }
 
 export const codeCourant = () => etat.code;
+
+/** Le nom et l'avatar, pour que la liste sache à qui elle est. */
+export const profilCourant = () => ({ nom: etat.nom, avatar: etat.avatar });
