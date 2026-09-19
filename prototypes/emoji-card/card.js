@@ -1800,6 +1800,16 @@ function renderCardView(film) {
   back.addEventListener('click', closeCard);
   top.append(back);
 
+  /* Où on en est dans la liste : sans cela, on est perdu au douzième film. */
+  const liste = currentList();
+  const rang = liste.findIndex(x => keyOf(x) === keyOf(film));
+  if (liste.length > 1 && rang >= 0) {
+    const position = document.createElement('span');
+    position.className = 'card-pos';
+    position.textContent = (rang + 1) + ' / ' + liste.length;
+    top.append(position);
+  }
+
   /* Passer au film suivant sans ressortir. Le geste a un signifiant visible :
      un glissement qu'on ne voit pas n'en est pas un. */
   const at = currentList().findIndex(x => keyOf(x) === keyOf(film));
@@ -1964,6 +1974,27 @@ function renderComposer(film) {
   }
 }
 
+/** Une couche plein écran doit garder le clavier : sinon on tabule derrière
+ *  elle, dans des éléments qu'on ne voit pas. */
+function trapFiche(event) {
+  if (cardEl_.hidden || event.key !== 'Tab') return;
+  const items = [...cardEl_.querySelectorAll(
+    'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+  )].filter(node => node.offsetParent !== null);
+  if (!items.length) return;
+  const premier = items[0];
+  const dernier = items[items.length - 1];
+  const actif = document.activeElement;
+  const dehors = !cardEl_.contains(actif);
+  if (event.shiftKey && (actif === premier || dehors)) {
+    event.preventDefault();
+    dernier.focus();
+  } else if (!event.shiftKey && (actif === dernier || dehors)) {
+    event.preventDefault();
+    premier.focus();
+  }
+}
+
 function closeCard() {
   const film = current;
   cardEl_.hidden = true;
@@ -2094,7 +2125,9 @@ function start() {
       return;
     }
     // Les flèches passent d'un film à l'autre — la télécommande viendra par là.
-    if (cardEl_.hidden || state.composing) return;
+    if (cardEl_.hidden) return;
+    trapFiche(event);
+    if (state.composing) return;
     if (event.key === 'ArrowRight') { event.preventDefault(); stepFilm(1); }
     if (event.key === 'ArrowLeft') { event.preventDefault(); stepFilm(-1); }
   });

@@ -481,9 +481,11 @@ img { display: block; }
 
 /* ── La carte-film en grand ──────────────────────────────────────────────── */
 
+/* La fiche monte SOUS l'en-tête : on garde le sélecteur de présentation et le
+   miroir sous la main, au lieu d'en faire un cul-de-sac. */
 #card {
   position: fixed;
-  inset: 0;
+  inset: 52px 0 0 0;
   z-index: 60;
   display: flex;
   flex-direction: column;
@@ -1212,6 +1214,63 @@ img { display: block; }
   animation: rise 1400ms var(--e-out) both;
 }
 
+/* ── La position dans la liste ───────────────────────────────────────────── */
+
+.card-pos {
+  position: absolute;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 11px;
+  border-radius: 999px;
+  background: rgba(6, 8, 13, 0.62);
+  backdrop-filter: blur(4px);
+  font-size: var(--fs-2xs);
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: var(--c-text-dim);
+  pointer-events: none;
+}
+
+/* ── La fiche sur un grand écran ─────────────────────────────────────────── *
+   Une page de téléphone étirée sur 1280 px donnait 151 signes par ligne et un
+   moment haut de la moitié de l'écran. Ici : le moment d'un côté, le texte de
+   l'autre.                                                                  */
+
+@media (min-width: 900px) {
+  #card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(400px, 620px);
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+
+  .card-top {
+    grid-column: 1;
+    grid-row: 1 / span 2;
+    height: 100%;
+    max-height: none;
+    min-height: 0;
+  }
+
+  .card-body {
+    grid-column: 2;
+    grid-row: 1;
+    margin-top: 0;
+    padding: 26px 40px 16px;
+    overflow-y: auto;
+  }
+
+  .card-foot {
+    grid-column: 2;
+    grid-row: 2;
+    padding: 14px 40px 26px;
+  }
+
+  /* Les chevrons restent sur l'image, mais près de ses bords. */
+  .card-nav--prev { left: 16px; }
+  .card-nav--next { right: 16px; }
+}
+
 /* ── Le compositeur ──────────────────────────────────────────────────────── */
 
 /* L'écran d'écriture : la barre se réduit, le carton occupe le reste. */
@@ -1462,6 +1521,8 @@ img { display: block; }
 .text {
   display: grid;
   gap: 14px;
+  /* Jamais plus de 68 signes par ligne : au-delà, l'œil perd le début. */
+  max-width: 68ch;
 }
 
 .text__title {
