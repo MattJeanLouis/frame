@@ -1319,6 +1319,7 @@ function filmSlides(film) {
   // 1 — de quoi ça parle
   slides.push({
     kind: 'resume',
+    nom: 'Résumé',
     title: film.title,
     meta: metaLine(film),
     text: film.overview || ''
@@ -1329,7 +1330,7 @@ function filmSlides(film) {
   if (film.director) gens.push([film.kind === 'tv' ? 'Création' : 'Réalisation', film.director]);
   if (film.cast?.length) gens.push(['Avec', film.cast.slice(0, 4).join(', ')]);
   if (film.companies?.length) gens.push(['Production', film.companies.slice(0, 2).join(', ')]);
-  if (gens.length) slides.push({ kind: 'rows', rows: gens });
+  if (gens.length) slides.push({ kind: 'rows', nom: 'Équipe', rows: gens });
 
   // 3 — ce qu'on en sait
   const faits = [];
@@ -1337,14 +1338,14 @@ function filmSlides(film) {
   if (film.vote_count) faits.push(['Note', film.vote_average.toFixed(1) + ' / 10']);
   if (film.budget) faits.push(['Budget', money(film.budget)]);
   if (film.revenue) faits.push(['Recettes', money(film.revenue)]);
-  if (faits.length) slides.push({ kind: 'rows', rows: faits });
+  if (faits.length) slides.push({ kind: 'rows', nom: 'Chiffres', rows: faits });
 
   // 4 — où le voir
-  if (film.providers?.length) slides.push({ kind: 'rows', rows: [['Où le voir', film.providers.join(', ')]] });
+  if (film.providers?.length) slides.push({ kind: 'rows', nom: 'Où le voir', rows: [['', film.providers.join(', ')]] });
 
   // 5 — le moment, toujours en dernier
   const moment = momentOf(film);
-  if (moment) slides.push({ kind: 'moment', key: moment.key });
+  if (moment) slides.push({ kind: 'moment', nom: 'Bande-annonce', key: moment.key });
 
   return slides;
 }
@@ -1418,9 +1419,10 @@ function showSlide(card, film, index) {
   // Le contenu, remplacé d'un bloc : jamais deux groupes à l'écran.
   deck.body.replaceChildren(slideBody(slide));
 
-  // Les flèches ne sortent pas de la carte.
-  deck.prev.disabled = deck.at === 0;
-  deck.next.disabled = deck.at === deck.slides.length - 1;
+  // Le raccourci courant s'allume : on sait toujours où on est.
+  deck.onglets.forEach((bouton, i) => {
+    bouton.setAttribute('aria-current', String(i === deck.at));
+  });
 
   clearTimeout(deck.timer);
   if (deck.at < deck.slides.length - 1) {
@@ -1444,6 +1446,10 @@ function buildDeck(card, film) {
   layer2.className = 'peek__plate';
 
   const slides = filmSlides(film);
+
+  // Le deck est déclaré AVANT ses boutons : ils le referencent dans showSlide.
+  const deck = { slides, at: 0, timer: 0, bar, body, onglets: [], film };
+  card.__deck = deck;
   /* Les segments sont cliquables : ils en ont l'air, donc ils doivent l'être.
      On ne fait pas cliquer sur une barre qui ne répond pas. */
   for (let i = 0; i < slides.length; i++) {
@@ -1460,26 +1466,27 @@ function buildDeck(card, film) {
     bar.append(seg);
   }
 
-  const prev = document.createElement('button');
-  prev.type = 'button';
-  prev.className = 'peek__arrow peek__arrow--prev';
-  prev.setAttribute('aria-label', 'Information précédente');
-  prev.append(CHEVRON());
+  /* Des raccourcis nommés plutôt que des flèches : on voit CE QU'ON PEUT voir,
+     au lieu d'avancer à l'aveugle. Discrets, mais on sait où on va. */
+  const jump = document.createElement('div');
+  jump.className = 'peek__jump';
+  const onglets = slides.map((slide, i) => {
+    const bouton = document.createElement('button');
+    bouton.type = 'button';
+    bouton.className = 'peek__tab';
+    bouton.textContent = slide.nom || 'Détail';
+    bouton.addEventListener('click', event => {
+      event.stopPropagation();
+      clearTimeout(peekTimer);
+      showSlide(card, film, i);
+    });
+    jump.append(bouton);
+    return bouton;
+  });
 
-  const next = document.createElement('button');
-  next.type = 'button';
-  next.className = 'peek__arrow peek__arrow--next';
-  next.setAttribute('aria-label', 'Information suivante');
-  next.append(CHEVRON());
-
-  const deck = { slides, at: 0, timer: 0, bar, body, prev, next, film };
-  card.__deck = deck;
-
-  prev.addEventListener('click', event => { event.stopPropagation(); showSlide(card, film, deck.at - 1); });
-  next.addEventListener('click', event => { event.stopPropagation(); showSlide(card, film, deck.at + 1); });
-
-  layer2.append(bar, body);
-  layer.replaceChildren(layer2, prev, next);
+  layer2.append(bar, body, jump);
+  layer.replaceChildren(layer2);
+  deck.onglets = onglets;
   return deck;
 }
 
@@ -1492,10 +1499,17 @@ function dwellFor(film) {
 function bindPeek(card, film) {
   if (!canHover()) return;
 
+  let fermeture = 0;
   const fermer = () => {
     clearTimeout(peekTimer);
     card.classList.remove('is-peeking');
     if (card.__deck) clearTimeout(card.__deck.timer);
+  };
+  /* Un délai avant de fermer : le moindre écart de souris emportait la
+     bande-annonce en cours. Elle ne doit pas disparaître si facilement. */
+  const fermerBientot = () => {
+    clearTimeout(fermeture);
+    fermeture = setTimeout(fermer, 420);
   };
 
   card.addEventListener('pointerenter', () => {
@@ -1508,23 +1522,28 @@ function bindPeek(card, film) {
       // Le détail ET les vidéos : sans elles, le dernier groupe n'existe pas.
       if ((!film.__detail || !film.__videos) && state.live) {
         await Promise.all([fetchDetail(film), fetchExtras(film)]);
-        // Le détail arrive : on refait les groupes, sans perdre sa place.
+        /* Le détail arrive et les groupes changent. On refait le diaporama,
+           mais on retrouve le groupe où on était PAR SON NOM : la
+           bande-annonce qu'on vient d'ouvrir ne doit pas s'évaporer parce que
+           les données sont arrivées après. */
         if (card.classList.contains('is-peeking')) {
-          const at = card.__deck.at;
+          const voulu = card.__deck.slides[card.__deck.at]?.nom;
           card.__deck = null;
           buildDeck(card, film);
-          showSlide(card, film, at);
+          const ou = card.__deck.slides.findIndex(s => s.nom === voulu);
+          showSlide(card, film, ou >= 0 ? ou : 0);
         }
       }
     }, 240);
   });
-  card.addEventListener('pointerleave', fermer);
+  card.addEventListener('pointerleave', fermerBientot);
+  card.addEventListener('pointerenter', () => clearTimeout(fermeture));
   card.addEventListener('focus', () => {
     buildDeck(card, film);
     card.classList.add('is-peeking');
     showSlide(card, film, 0);
   });
-  card.addEventListener('blur', fermer);
+  card.addEventListener('blur', fermerBientot);
   card.addEventListener('keydown', event => {
     if (card.__deck && event.key === 'ArrowRight') { event.preventDefault(); showSlide(card, film, card.__deck.at + 1); }
     if (card.__deck && event.key === 'ArrowLeft') { event.preventDefault(); showSlide(card, film, card.__deck.at - 1); }
