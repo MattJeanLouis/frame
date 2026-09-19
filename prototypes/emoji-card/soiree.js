@@ -27,7 +27,7 @@ let deps = { films: () => [], chercher: async () => [], annoncer: () => { } };
 let racine = null;
 let etat = {
   base: '', nom: '', code: '', joueurId: '',
-  vue: null, flux: null, erreur: '', occupe: false, accueilCode: '',
+  vue: null, flux: null, erreur: '', occupe: false, accueilCode: '', reseauPrive: true,
   recherche: '', resultats: [], cherchant: false
 };
 
@@ -44,11 +44,24 @@ const retenir = patch => {
 
 /** L'adresse du serveur de soirée. Par défaut celui qui a servi la page : si on
  *  est arrivé par le lien de l'hôte, il n'y a rien à configurer. */
+/** La page tourne-t-elle sur un réseau privé — là où un serveur de soirée peut
+ *  vivre ? En ligne, il n'y en a pas : la version publiée est statique. */
+function surReseauPrive() {
+  const hote = location.hostname || 'localhost';
+  return hote === 'localhost' || hote === '127.0.0.1' ||
+    /^192\.168\./.test(hote) || /^10\./.test(hote) || /^172\.(1[6-9]|2[0-9]|3[01])\./.test(hote);
+}
+
 function baseParDefaut() {
   const garde = charger().base;
   if (garde) return garde;
   if (location.port === '8092') return location.origin;
-  return location.protocol + '//' + (location.hostname || 'localhost') + ':8092';
+  /* En local, la page (8090) et le serveur de soirée (8092) cohabitent : on
+     propose le bon port d'emblée. */
+  if (surReseauPrive()) return location.protocol + '//' + (location.hostname || 'localhost') + ':8092';
+  /* En ligne, on laisse l'origine plutôt qu'un port inventé : l'hôte saisira
+     l'adresse de la machine qui héberge la partie. */
+  return location.origin;
 }
 
 async function appel(chemin, corps) {
@@ -69,6 +82,13 @@ async function appel(chemin, corps) {
   let données = null;
   try { données = await r.json(); } catch { /* réponse non-JSON */ }
   if (!r.ok) throw new Error(données?.erreur || ('Le serveur a répondu ' + r.status));
+  /* Un 200 qui n'est pas du JSON n'est pas une réussite : c'est une page servie
+     à la place de l'API — un portail captif, une redirection mal réglée. Le
+     dire vaut mieux que de laisser échouer trois lignes plus loin sur `null`. */
+  if (données === null) {
+    throw new Error('L’adresse ' + etat.base + ' n’est pas un serveur de soirée : ' +
+      'elle a répondu autre chose que des données.');
+  }
   return données;
 }
 
@@ -133,6 +153,14 @@ function ecranAccueil() {
   const boite = h('div', 'soiree__accueil');
   boite.append(h('p', 'soiree__intro',
     'Chacun apporte des films, puis ils s’affrontent deux par deux. On vote à chaque duel, et le résultat tombe tout de suite.'));
+
+  /* L'information la plus utile n'a pas à être cachée dans un pliant : sans
+     serveur, il n'y a pas de soirée du tout. */
+  if (!etat.reseauPrive) {
+    boite.append(h('p', 'soiree__note',
+      'Une soirée a besoin d’un serveur. L’hôte lance « npm run room » sur son ordinateur, ' +
+      'puis donne l’adresse affichée ci-dessous — tout reste sur le réseau local.'));
+  }
 
   const nom = h('label', 'soiree__champ');
   nom.append(h('span', null, 'Ton nom'));
@@ -201,7 +229,9 @@ function ecranAccueil() {
   adresse.append(champBase);
   details.append(adresse);
   details.append(h('p', 'soiree__note',
-    'L’hôte lance « npm run room » et donne l’adresse affichée. Tout reste sur le réseau local.'));
+    'Une soirée a besoin d’un serveur : l’hôte lance « npm run room » sur son ordinateur ' +
+    'et donne l’adresse affichée. Tout reste sur le réseau local — la version en ligne, ' +
+    'elle, ne peut pas héberger de partie.'));
   boite.append(details);
   return boite;
 }
@@ -586,6 +616,7 @@ export function initRoom(dependances = {}) {
   if (!racine) return;
 
   const garde = charger();
+  etat.reseauPrive = surReseauPrive();
   etat.base = garde.base || baseParDefaut();
   etat.nom = garde.nom || '';
 

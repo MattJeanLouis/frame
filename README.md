@@ -23,6 +23,42 @@ Deux variantes utiles :
 - http://localhost:8090/?mode=liste — la même application avec une grille de chips
   au lieu de la toile, pour comparer les deux à l'aveugle.
 
+## Publier sur Netlify
+
+Le dépôt est prêt : `netlify.toml` décrit la construction, et une fonction serveur
+garde la clé TMDB hors du navigateur.
+
+1. Dans Netlify : **Add new site → Import an existing project**, puis choisis le
+   dépôt `frame`. Netlify lit `netlify.toml` tout seul — commande
+   `node tools/build-netlify.mjs`, dossier publié `dist/`.
+2. **Site configuration → Environment variables** : ajoute
+
+   ```
+   TMDB_TOKEN = eyJ…        (ton jeton de lecture TMDB)
+   ```
+
+   Sans elle, le site s'ouvre sur le catalogue de démonstration. Avec elle, la
+   clé reste sur le serveur : le navigateur ne la voit jamais, et personne ne
+   peut l'extraire de la page pour épuiser ton quota.
+
+Pour vérifier avant de publier, exactement ce que Netlify servira :
+
+```bash
+npm run build          # construit dist/
+npm run servir-dist    # sert dist/ + la fonction, sur le port 8094
+```
+
+### Ce qui marche en ligne, et ce qui ne marche pas
+
+Le site publié est **statique** : catalogue, recherche, thèmes, collections,
+fiches, disponibilités, bandes-annonces. Tout cela fonctionne.
+
+Le **mode Soirée** a besoin d'un serveur qui tient l'état partagé, et Netlify
+n'en fait pas tourner. En ligne, l'écran de soirée le dit et propose de saisir
+l'adresse d'un serveur : l'hôte lance `npm run room` sur son ordinateur, et tout
+le monde s'y connecte sur le même réseau Wi-Fi. Le site publié sert alors
+d'interface ; c'est le serveur de l'hôte qui tient la partie.
+
 ## Une soirée à plusieurs
 
 Pour choisir un film à plusieurs : l'hôte lance le serveur, les autres ouvrent

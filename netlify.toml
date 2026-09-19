@@ -1,0 +1,39 @@
+# FRAME — réglage Netlify
+#
+# Le site est statique : Netlify sert `dist/`, construit par un script Node sans
+# dépendance. La seule partie dynamique est le relais TMDB, une fonction qui
+# garde la clé hors du navigateur.
+#
+# À FAIRE UNE FOIS dans Netlify :
+#   Site configuration → Environment variables → ajouter
+#     TMDB_TOKEN = <ton jeton de lecture TMDB — celui qui commence par « eyJ »>
+# Sans elle, le site s'ouvre sur le catalogue de démonstration.
+
+[build]
+  command = "node tools/build-netlify.mjs"
+  publish = "dist"
+  functions = "netlify/functions"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# PAS de redirection attrape-tout.
+#
+# Le réflexe « application d'une seule page » veut que toute adresse serve
+# index.html. Ici ce serait nuisible : l'application n'a pas de routeur — elle
+# passe par des paramètres d'adresse — et la page demande `config.local.js`, qui
+# n'existe pas en ligne. Servi en HTML, ce fichier fait échouer le chargement du
+# script avec « Unexpected token '<' ». Une adresse inconnue doit être un 404.
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+
+# Le relais ne doit jamais être mis en cache par le navigateur : il porte la clé
+# et ses réponses dépendent de la requête.
+[[headers]]
+  for = "/.netlify/functions/*"
+  [headers.values]
+    Cache-Control = "no-store"

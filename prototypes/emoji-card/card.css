@@ -1532,6 +1532,10 @@ img { display: block; }
 #search {
   flex: 1;
   min-width: 0;
+  /* Le champ occupe toute la hauteur de la pilule. Sans cela il ne faisait que
+     22 px dans une barre de 48 : toucher le haut ou le bas de la barre ne
+     donnait pas le curseur, ce qui se ressent tout de suite au pouce. */
+  height: 100%;
   border: 0;
   outline: 0;
   background: transparent;

@@ -31,7 +31,13 @@ export function movieUrl(id) {
   return 'https://www.themoviedb.org/movie/' + id;
 }
 
-export function createClient({ credential, fetchImpl = fetch }) {
+/**
+ * `proxy` est le chemin d'une fonction serveur qui relaie TMDB en gardant la
+ * clé chez elle. Quand il est fourni et qu'aucune clé n'est disponible côté
+ * navigateur, toutes les requêtes passent par lui : la clé n'est alors jamais
+ * téléchargée par le client.
+ */
+export function createClient({ credential, fetchImpl = fetch, proxy = null }) {
   const auth = detectAuth(credential);
   const keywordMemory = new Map();
   const stickerKeywordMemory = new Map();
@@ -40,7 +46,11 @@ export function createClient({ credential, fetchImpl = fetch }) {
   const detailsMemory = new Map();
 
   async function request(path, params = {}) {
-    const url = new URL(API_BASE + path);
+    /* Sans clé mais avec un relais, on passe par le relais. Sans l'un ni
+       l'autre, il n'y a rien à faire — et on le dit. */
+    if (!auth && !proxy) throw new TmdbError('Aucun identifiant TMDB utilisable', 401);
+    const url = auth ? new URL(API_BASE + path) : new URL(proxy, location.origin);
+    if (!auth) url.searchParams.set('path', path);
     url.searchParams.set('language', 'fr-FR');
     url.searchParams.set('include_adult', 'false');
     for (const [key, value] of Object.entries(params)) {
@@ -50,7 +60,6 @@ export function createClient({ credential, fetchImpl = fetch }) {
     const options = { headers: { accept: 'application/json' } };
     if (auth === 'bearer') options.headers.Authorization = 'Bearer ' + credential;
     else if (auth === 'apikey') url.searchParams.set('api_key', credential);
-    else throw new TmdbError('Aucun identifiant TMDB utilisable', 401);
 
     let response;
     try {

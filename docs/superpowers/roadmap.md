@@ -186,7 +186,65 @@ cible sous 44 px.
 
 ---
 
-## 5. Comment on vérifie
+## 5. Publication
+
+Le dépôt est **public** : <https://github.com/MattJeanLouis/frame>, branche `main`.
+Le site est prêt pour Netlify (`netlify.toml`), mais **pas encore déployé** : il
+faut lier le dépôt dans Netlify et y ajouter la variable `TMDB_TOKEN`.
+
+### La clé TMDB ne va pas dans la page
+
+C'est la seule décision technique qui compte ici. Une clé recopiée dans un site
+statique est lisible par n'importe qui, et épuisable par n'importe qui. Le site
+publié passe donc par **une fonction Netlify** (`netlify/functions/tmdb.mjs`) qui
+relaie l'API et garde la clé dans les variables d'environnement.
+
+La fonction n'accepte qu'un **chemin d'API TMDB** — pas d'URL absolue, pas de
+`..`, pas de schéma, pas de POST. Un relais ouvert à tout serait pire que pas de
+relais : il ferait porter n'importe quelle requête à la clé. Vérifié : une URL
+absolue et une remontée de chemin sont refusées.
+
+Le client, lui, choisit sa route tout seul : clé locale (`config.local.js`) →
+TMDB en direct ; pas de clé mais un relais qui répond → le relais ; ni l'un ni
+l'autre → catalogue de démonstration. Il le **demande** au lieu de le supposer,
+parce qu'un drapeau inscrit dans le code finirait par mentir dans l'un des trois
+cas.
+
+### La soirée ne tourne pas sur Netlify
+
+Netlify ne sert que des fichiers : il n'y a nulle part où tenir l'état partagé
+d'une partie. Le site publié sert d'interface, et l'hôte lance `npm run room` sur
+son ordinateur ; les autres s'y connectent sur le même réseau. C'est écrit dans
+le README et dit dans l'écran de soirée.
+
+### Sans redirection attrape-tout
+
+Le réflexe « application d'une seule page » veut que toute adresse serve
+`index.html`. Ici ce serait nuisible : la page demande `config.local.js`, qui
+n'existe pas en ligne ; servi en HTML, ce fichier fait échouer le chargement du
+script avec « Unexpected token '<' ». L'application n'a pas de routeur — elle
+passe par des paramètres d'adresse — donc une adresse inconnue doit être un 404.
+
+### Vérifié sur la version construite
+
+`npm run build` puis `npm run servir-dist` reproduisent exactement ce que Netlify
+servira, fonction comprise. Éprouvé dans Chrome : `config.local.js` en 404 et non
+en HTML, aucun jeton dans la page, 114 appels au relais tous en 200, catalogue en
+direct (40 titres), fiche complète, **aucune exception** — puis sur téléphone :
+aucun défilement horizontal, rien hors écran, aucune cible tactile sous 32 px,
+grille à deux colonnes, fiche à 44 px par état.
+
+### Reste ouvert
+
+- **Le site n'est pas encore déployé** : il manque le lien Netlify et `TMDB_TOKEN`.
+- **Pas de nom de domaine** : l'adresse sera `*.netlify.app`.
+- **Le catalogue est cher en appels** : chaque visite charge des vignettes TMDB
+  et interroge le relais une centaine de fois. Le relais met une heure en cache,
+  mais il n'y a pas de limite de débit par visiteur.
+
+---
+
+## 6. Comment on vérifie
 
 Ce qui compte n'est pas qu'un test passe, c'est que l'application fasse ce qu'on
 croit qu'elle fait. Les scripts de `.superpowers/verify/` pilotent Chrome en
@@ -200,7 +258,12 @@ node verif-coherence.mjs          # courses de recherche, nom de collection
 node verif-dispo.mjs              # disponibilités par pays
 node verif-sagas-dispo.mjs        # sagas, téléphone
 node verif-soiree.mjs             # le mode Soirée, à DEUX navigateurs
+node verif-publie.mjs             # la version construite, servie comme Netlify
 ```
+
+`verif-publie.mjs` a besoin de `npm run build` puis `npm run servir-dist` : il
+éprouve `dist/`, pas les sources, et vérifie en particulier que la clé TMDB ne
+part jamais dans la page.
 
 `verif-soiree.mjs` a besoin de deux Chrome sur des ports de débogage différents (9222 et
 9223) et de profils séparés : sans deux stockages distincts, on ne teste qu'un joueur qui

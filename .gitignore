@@ -2,4 +2,7 @@ config.local.js
 .env
 .env.*
 node_modules/
+# La construction Netlify : produite par `npm run build`, jamais versionnée.
+dist/
+.netlify/
 .DS_Store

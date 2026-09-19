@@ -89,6 +89,8 @@ const state = {
   credential: '',
   client: null,
   live: false,
+  /* Un relais serveur garde la clé TMDB hors du navigateur. */
+  relais: false,
   mode: 'film',
   films: new Map(),
   wall: [],
@@ -245,21 +247,49 @@ function signatureOf(film) {
 
 /* ── Réseau ───────────────────────────────────────────────────────────────── */
 
+/* Le relais de production.
+ *
+ * Sur Netlify, la clé TMDB vit dans les variables d'environnement, et cette
+ * fonction serveur relaie les requêtes : le navigateur ne la télécharge jamais.
+ * En local, `config.local.js` fournit la clé et on parle à TMDB en direct.
+ * Le chemin est celui que Netlify réserve aux fonctions. */
+const RELAIS = '/.netlify/functions/tmdb';
+
+/** La clé est-elle utilisable telle quelle ? */
+const authDirecte = () => detectAuth(state.credential);
+
 async function api(path, params, { signal } = {}) {
-  const url = new URL(API_BASE + path);
+  const auth = authDirecte();
+  /* Sans clé locale, on passe par le relais — mais seulement s'il existe : la
+     même page doit marcher en local, sur Netlify, et en démonstration. */
+  if (!auth && !state.relais) throw new Error('sans-clé');
+  const url = auth ? new URL(API_BASE + path) : new URL(RELAIS, location.origin);
+  if (!auth) url.searchParams.set('path', path);
   url.searchParams.set('language', 'fr-FR');
   for (const [key, value] of Object.entries(params || {})) {
     if (value === undefined || value === null || value === '') continue;
     url.searchParams.set(key, String(value));
   }
   const options = { headers: { accept: 'application/json' }, signal };
-  const auth = detectAuth(state.credential);
   if (auth === 'bearer') options.headers.Authorization = 'Bearer ' + state.credential;
   else if (auth === 'apikey') url.searchParams.set('api_key', state.credential);
-  else throw new Error('sans-clé');
   const response = await fetch(url, options);
   if (!response.ok) throw new Error('TMDB ' + response.status);
   return response.json();
+}
+
+/**
+ * Y a-t-il un relais en face ?
+ *
+ * On le DEMANDE plutôt que de le supposer : un drapeau inscrit dans le code
+ * finirait par mentir dans l'un des trois cas — local, publié, démonstration.
+ */
+async function relaisDisponible() {
+  if (location.protocol === 'file:') return false;
+  try {
+    const r = await fetch(RELAIS + '?path=/configuration', { headers: { accept: 'application/json' } });
+    return r.ok;
+  } catch { return false; }
 }
 
 /* ── Films et séries : une seule matière ──────────────────────────────────── */
@@ -3636,15 +3666,25 @@ function announce(text) {
 
 /* ── Démarrage ────────────────────────────────────────────────────────────── */
 
-function start() {
+/* `start` est asynchrone : sans clé locale, il interroge le relais avant de
+   décider si l'application est en direct ou en démonstration. */
+async function start() {
   loadStore();
   initCatalogueLayout();
   el('btn-refine').addEventListener('click', () => setRefinements(el('refinements').hidden));
 
   const config = window.FRAME_CONFIG || {};
   state.credential = config.tmdbToken || config.tmdbKey || loadCredential();
-  state.live = new URLSearchParams(location.search).get('demo') !== '1' && detectAuth(state.credential) !== null;
-  state.client = state.live ? createClient({ credential: state.credential }) : createDemoClient();
+  const demonstration = new URLSearchParams(location.search).get('demo') === '1';
+  /* Sans clé locale, on cherche un relais avant de renoncer : c'est le cas
+     normal de la version publiée. */
+  if (!demonstration && detectAuth(state.credential) === null) {
+    state.relais = await relaisDisponible();
+  }
+  state.live = !demonstration && (detectAuth(state.credential) !== null || state.relais);
+  state.client = state.live
+    ? createClient({ credential: state.credential, proxy: state.relais ? RELAIS : null })
+    : createDemoClient();
 
   el('btn-mirror').addEventListener('click', openMirror);
 
@@ -3764,4 +3804,14 @@ function start() {
   show();
 }
 
-start();
+/* Une panne au démarrage ne doit pas laisser une page blanche et muette. */
+start().catch(error => {
+  const avis = document.getElementById('wall');
+  if (avis) {
+    const p = document.createElement('p');
+    p.className = 'wall-vide';
+    p.textContent = 'L’application n’a pas pu démarrer : ' + error.message;
+    avis.replaceChildren(p);
+  }
+  console.error(error);
+});
