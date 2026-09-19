@@ -1,3 +1,10 @@
+/* Les courbes de mouvement du prototype. Expo pour les entrées — décidée,
+   quart pour les changements d'état — douce. */
+:root {
+  --e-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --e-quart: cubic-bezier(0.25, 1, 0.5, 1);
+}
+
 /* ─────────────────────────────────────────────────────────────────────────
    FRAME v2 — carte-film. Prototype jetable.
    Salle obscure : le fond ne s'éclaire jamais, les emoji sont les lumières.
@@ -236,6 +243,15 @@ img { display: block; }
 .card--hero {
   grid-column: span 2;
   aspect-ratio: 16 / 9;
+}
+
+.card__img.is-loading,
+.reel__still.is-loading,
+.card-stage__still.is-loading,
+.peek__poster.is-loading { opacity: 0; }
+
+.card__img, .reel__still, .card-stage__still {
+  transition: opacity 340ms var(--e-quart);
 }
 
 .card__img {
@@ -1476,6 +1492,8 @@ img { display: block; }
   border-top: 1px solid var(--c-line);
 }
 #sous-filtres::-webkit-scrollbar { display: none; }
+@keyframes rangee-in { from { opacity: 0; transform: translateY(-5px); } }
+#sous-filtres:not([hidden]), #tris { animation: rangee-in 260ms var(--e-expo) both; }
 #sous-filtres[hidden] { display: none; }
 #sous-filtres .filter {
   height: 30px;
@@ -1625,7 +1643,21 @@ img { display: block; }
 @keyframes seg-fill { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 
 /* Le groupe occupe la carte et n'en sort jamais. */
-.peek__body { flex: 1; min-height: 0; overflow: hidden; }
+.peek__body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+@keyframes groupe-in {
+  from { opacity: 0; transform: translateX(calc(var(--sens, 1) * 16px)); }
+}
+.peek__slide--in {
+  position: absolute;
+  inset: 0;
+  animation: groupe-in 300ms var(--e-expo) both;
+}
+.peek__slide { position: absolute; inset: 0; }
 /* En colonne, pas en grille : une rangée de grille se règle sur son contenu, et
    une vidéo en position absolue n'a pas de contenu — elle tombait à zéro. */
 .peek__slide {
@@ -1889,6 +1921,10 @@ img { display: block; }
 
 @media (prefers-reduced-motion: reduce) {
   .card { animation: none; opacity: 1; transform: none; }
+  .peek__slide--in { animation: none; }
+  .mark, .peek__act, .reel__act { animation: none; }
+  #sous-filtres:not([hidden]), #tris { animation: none; }
+  .card__img, .reel__still, .card-stage__still { transition: opacity 200ms linear; }
   .card--skeleton::after { animation: none; }
   .spark { animation-duration: 1ms; }
   .quote__text, .quote--filets::after, .quote--filets .quote__rule, .composer__budget i {
@@ -1925,6 +1961,13 @@ img { display: block; }
        .preset, .query-chip, .sig__slot, .reel__write, .card-nav, .peek__arrow,
        .back, .close, .reel__open, .peek__seg):hover {
   color: var(--c-text);
+}
+
+@keyframes pop {
+  45% { transform: scale(1.08); }
+}
+.mark[aria-pressed="true"], .peek__act[aria-pressed="true"], .reel__act[aria-pressed="true"] {
+  animation: pop 280ms var(--e-expo);
 }
 
 /* Le toucher répond tout de suite : c'est le retour le plus important, et il

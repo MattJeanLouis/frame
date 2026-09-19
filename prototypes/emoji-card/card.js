@@ -435,6 +435,16 @@ function emojiImg(emoji, className = '') {
   return img;
 }
 
+/** Une image qui n'apparaît qu'une fois prête : sinon elle saute dans la page. */
+function fondu(img) {
+  img.classList.add('is-loading');
+  const montre = () => img.classList.add('is-loaded');
+  if (img.complete && img.naturalWidth) montre();
+  else img.addEventListener('load', montre, { once: true });
+  img.addEventListener('error', montre, { once: true });
+  return img;
+}
+
 function posterEl(film, className) {
   if (film.poster_path) {
     const img = document.createElement('img');
@@ -442,7 +452,7 @@ function posterEl(film, className) {
     img.src = state.client.posterUrl(film.poster_path, 'w342');
     img.alt = '';
     img.loading = 'lazy';
-    return img;
+    return fondu(img);
   }
   const blank = document.createElement('span');
   blank.className = 'card__blank';
@@ -477,7 +487,7 @@ function stillEl(film, video, className) {
   } else if (poster) {
     img.src = poster;
   }
-  return img;
+  return fondu(img);
 }
 
 /* ── Le mur ───────────────────────────────────────────────────────────────── */
@@ -662,6 +672,7 @@ function renderWall() {
     return;
   }
   wallEl.replaceChildren(...state.wall.map((film, i) => wallCard(film, i)));
+  doux(wallEl);
   restoreScroll('film');
 }
 
@@ -679,6 +690,13 @@ function restoreScroll(mode) {
 }
 
 /** La barre dit où tu en es dans le fil, sans un chiffre. */
+/** Un fondu court sur un conteneur qu'on vient de remplir : ça évite le claquement. */
+function doux(el) {
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  if (typeof el.animate !== 'function') return;
+  el.animate([{ opacity: 0.4 }, { opacity: 1 }], { duration: 240, easing: 'cubic-bezier(0.25, 1, 0.5, 1)' });
+}
+
 function updateProgress() {
   const horizontal = state.mode === 'video';
   const max = horizontal
@@ -1717,8 +1735,21 @@ function showSlide(card, film, index) {
 
   [...deck.bar.children].forEach((seg, i) => seg.classList.toggle('is-done', i < deck.at));
 
-  // Le contenu, remplacé d'un bloc : jamais deux groupes à l'écran.
-  deck.body.replaceChildren(slideBody(slide));
+  /* La transition : le nouveau groupe arrive du côté où on va, l'ancien
+     s'efface dessous. Un échange sec donnait un clignotement. */
+  const nouveau = slideBody(slide);
+  const ancien = deck.body.firstElementChild;
+  nouveau.style.setProperty('--sens', String(deck.at >= (deck.prec ?? -1) ? 1 : -1));
+  nouveau.classList.add('peek__slide--in');
+  deck.body.append(nouveau);
+  deck.prec = deck.at;
+  if (ancien && ancien !== nouveau) {
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) ancien.remove();
+    else {
+      ancien.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 150, easing: 'ease-out', fill: 'forwards' })
+        .finished.then(() => ancien.remove()).catch(() => ancien.remove());
+    }
+  }
 
   // Le raccourci courant s'allume : on sait toujours où on est.
   deck.onglets.forEach((bouton, i) => {
@@ -1790,6 +1821,11 @@ function buildActions(card, film, variante) {
     bouton.append(emojiImg(emoji));
     bouton.addEventListener('click', event => {
       event.stopPropagation();
+      // L'éclat dit « c'est pris en compte » avant même que l'écran change.
+      if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        const r = bouton.getBoundingClientRect();
+        spark({ clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }, emoji);
+      }
       if (mark) {
         const actif = toggleMark(film, mark);
         bouton.setAttribute('aria-pressed', String(actif));
