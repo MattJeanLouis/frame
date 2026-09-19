@@ -342,11 +342,26 @@ async function fetchDetail(film) {
 
   const fr = providers?.results?.FR;
   film.providers = fr
-    ? [...new Set([...(fr.flatrate || []), ...(fr.rent || []), ...(fr.buy || [])].map(p => p.provider_name))]
+    ? plateformesDe([...(fr.flatrate || []), ...(fr.rent || []), ...(fr.buy || [])])
     : [];
 
   return film;
 }
+
+/**
+ * Le nom d'une plateforme, débarrassé de sa variante.
+ *
+ * TMDB liste « Netflix », « Netflix Standard with Ads », « Crunchyroll » et
+ * « Crunchyroll Amazon Channel » comme quatre fournisseurs distincts : sans
+ * nettoyage, la ligne « Où le voir » annonçait deux fois la même plateforme.
+ */
+const plateforme = nom => String(nom)
+  .replace(/\s+(Standard|Basic|Premium)?\s*with Ads$/i, '')
+  .replace(/\s+(Amazon|Apple TV) Channel$/i, '')
+  .trim();
+
+/** Les plateformes, sans doublon, dans l'ordre où on les a reçues. */
+const plateformesDe = liste => [...new Set((liste || []).map(p => plateforme(p.provider_name)))].filter(Boolean);
 
 /**
  * Les mots-clés d'une réponse TMDB.
@@ -1887,6 +1902,15 @@ function filmSlides(film) {
      sur une rangée, la bande passait à la ligne et les raccourcis se lisaient
      mal. Quatre groupes tiennent en deux rangées de deux. */
   const fiche = [];
+
+  /* Le nom, en mots. C'est ici que le langage s'explique : les emoji du mur
+     sont un nom, et ce nom se lit. */
+  const noms = signatureOf(film)
+    .map(id => STICKER_BY_ID.get(id)?.label)
+    .filter(Boolean)
+    .join(', ');
+  if (noms) fiche.push(['Son nom', noms]);
+
   if (film.director) fiche.push([film.kind === 'tv' ? 'Création' : 'Réalisation', film.director]);
   if (film.cast?.length) fiche.push(['Avec', film.cast.slice(0, 3).join(', ')]);
   if (film.vote_count) fiche.push(['Note', film.vote_average.toFixed(1) + ' / 10']);
@@ -2036,6 +2060,23 @@ function maListe(mark) {
     .filter(f => state.type === 'all' || (f.kind || 'movie') === state.type)
     .filter(f => !state.genres.length || state.genres.some(g => (f.genre_ids || []).includes(g)))
     .sort((a, b) => (b.at || 0) - (a.at || 0));
+}
+
+/**
+ * Écrire une recherche rend la main au catalogue.
+ *
+ * « Ma liste » et « Pour vous » sont des LIEUX : tant qu'ils sont ouverts,
+ * `show()` s'arrête sur eux — la barre de recherche et le moteur par emoji ne
+ * faisaient donc plus rien du tout. Une commande visible qui ne répond pas est
+ * pire qu'une commande absente : on quitte le lieu, et on le montre, plutôt que
+ * d'ignorer la demande.
+ */
+function quitterLesLieux() {
+  if (!state.liste && !state.forYou) return;
+  state.liste = null;
+  state.forYou = false;
+  renderListe();
+  renderFilters();
 }
 
 /** Ma liste à l'écran. Un vide qui explique vaut mieux qu'un vide muet. */
@@ -2263,6 +2304,7 @@ function renderPalette() {
       const at = state.picked.indexOf(sticker.id);
       if (at >= 0) state.picked.splice(at, 1);
       else state.picked.push(sticker.id);
+      quitterLesLieux();
       button.setAttribute('aria-pressed', String(at < 0));
       renderQueryChips();
       announce(sticker.label + (at < 0 ? ' ajouté à la recherche.' : ' retiré de la recherche.'));
@@ -3151,6 +3193,7 @@ function start() {
 
   searchInput.addEventListener('input', () => {
     state.query = searchInput.value;
+    quitterLesLieux();
     state.dejaVu = new Set();
     clearButton.hidden = !state.query;
     scheduleFilter();

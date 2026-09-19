@@ -234,6 +234,22 @@ img { display: block; }
 
 .card:active { transform: scale(0.975); }
 
+/* Le survol répond TOUT DE SUITE. Le volet met un quart de seconde à venir :
+   avant lui, la carte ne disait rien du tout, alors qu'elle est la seule chose
+   cliquable de l'écran. Un halo et un très léger grossissement de l'affiche
+   annoncent la couleur sans voler la vedette au volet qui suit.
+   Le `transform` de la carte est tenu par l'animation `card-in` (fill
+   `forwards`), donc on ne touche pas à la carte elle-même — seulement au halo et
+   à l'image. */
+@media (hover: hover) {
+  .card:hover {
+    box-shadow: var(--sh-card), 0 0 0 1px color-mix(in oklab, var(--c-accent) 45%, transparent);
+  }
+  .card:not(.card--hero):hover .card__img { transform: scale(1.035); }
+}
+
+.card__img, .card__blank { transition: transform 420ms var(--e-quart); }
+
 @keyframes card-in {
   to { opacity: 1; transform: none; }
 }
