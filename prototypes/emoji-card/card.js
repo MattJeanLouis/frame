@@ -301,8 +301,8 @@ async function fetchExtras(film) {
   if (film.__extra || !state.live) return;
   try {
     const [kw, vids] = await Promise.all([
-      api('/movie/' + film.id + '/keywords'),
-      api('/movie/' + film.id + '/videos')
+      api('/' + (film.kind || 'movie') + '/' + film.id + '/keywords'),
+      api('/' + (film.kind || 'movie') + '/' + film.id + '/videos')
     ]);
     film.keywords = (kw.keywords || []).map(k => k.name);
     film.videos = (vids.results || []).filter(v => v.site === 'YouTube');
@@ -347,7 +347,7 @@ async function fetchVideos(film) {
     return film.videos;
   }
   try {
-    const data = await api('/movie/' + film.id + '/videos');
+    const data = await api('/' + (film.kind || 'movie') + '/' + film.id + '/videos');
     film.videos = (data.results || []).filter(v => v.site === 'YouTube');
   } catch {
     film.videos = [];
@@ -1179,40 +1179,92 @@ async function runSearch(page = 1, { append = false } = {}) {
   }
 }
 
-/* ── Le survol : la couche sur l'image ───────────────────────────────────── */
+/* ── Le survol : un diaporama par groupes ────────────────────────────────── *
+   Le survol ne déverse plus tout d'un coup : il fait apparaître des flèches
+   et déroule l'information par groupes qui tiennent dans la carte — jamais
+   d'ascenseur. Le compte à rebours avance tout seul, et le dernier groupe est
+   la bande-annonce.                                                        */
 
 const canHover = () => matchMedia('(hover: hover) and (pointer: fine)').matches;
+const DWELL_MS = 5200;
 let peekTimer = 0;
 
-/**
- * Remplit la couche posée sur l'affiche. On remplit au fur et à mesure : ce
- * qu'on sait déjà tout de suite, puis le détail quand il arrive — la couche ne
- * clignote jamais.
- */
-function fillPeek(card, film) {
-  const layer = card.querySelector('.card__peek');
-  if (!layer) return;
+const CHEVRON = () => Object.assign(document.createElement('span'), { className: 'chev' });
 
-  const frag = document.createDocumentFragment();
+/** Les groupes, dans l'ordre. Le moment vient toujours en dernier. */
+function filmSlides(film) {
+  const slides = [];
 
-  const title = document.createElement('p');
-  title.className = 'text__title';
-  title.textContent = film.title;
-  frag.append(title);
+  // 1 — de quoi ça parle
+  slides.push({
+    kind: 'resume',
+    title: film.title,
+    meta: metaLine(film),
+    text: film.overview || ''
+  });
 
-  const meta = document.createElement('p');
-  meta.className = 'text__meta';
-  meta.textContent = metaLine(film);
-  frag.append(meta);
+  // 2 — qui l'a fait
+  const gens = [];
+  if (film.director) gens.push([film.kind === 'tv' ? 'Création' : 'Réalisation', film.director]);
+  if (film.cast?.length) gens.push(['Avec', film.cast.slice(0, 4).join(', ')]);
+  if (film.companies?.length) gens.push(['Production', film.companies.slice(0, 2).join(', ')]);
+  if (gens.length) slides.push({ kind: 'rows', rows: gens });
 
-  if (film.overview) {
-    const overview = document.createElement('p');
-    overview.className = 'text__overview';
-    overview.textContent = film.overview;
-    frag.append(overview);
+  // 3 — ce qu'on en sait
+  const faits = [];
+  if (film.countries?.length) faits.push(['Pays', film.countries.join(', ')]);
+  if (film.vote_count) faits.push(['Note', film.vote_average.toFixed(1) + ' / 10']);
+  if (film.budget) faits.push(['Budget', money(film.budget)]);
+  if (film.revenue) faits.push(['Recettes', money(film.revenue)]);
+  if (faits.length) slides.push({ kind: 'rows', rows: faits });
+
+  // 4 — où le voir
+  if (film.providers?.length) slides.push({ kind: 'rows', rows: [['Où le voir', film.providers.join(', ')]] });
+
+  // 5 — le moment, toujours en dernier
+  const moment = momentOf(film);
+  if (moment) slides.push({ kind: 'moment', key: moment.key });
+
+  return slides;
+}
+
+function slideBody(slide) {
+  const wrap = document.createElement('div');
+  wrap.className = 'peek__slide';
+
+  if (slide.kind === 'moment') {
+    const stage = document.createElement('div');
+    stage.className = 'peek__moment';
+    const frame = document.createElement('iframe');
+    frame.src = momentUrl(slide.key);
+    frame.setAttribute('allow', 'autoplay; encrypted-media');
+    frame.setAttribute('tabindex', '-1');
+    frame.setAttribute('aria-hidden', 'true');
+    stage.append(frame);
+    watchPlayer(frame);
+    wrap.append(stage);
+    return wrap;
   }
 
-  for (const [label, value] of detailRows(film)) {
+  if (slide.title) {
+    const title = document.createElement('p');
+    title.className = 'text__title';
+    title.textContent = slide.title;
+    wrap.append(title);
+  }
+  if (slide.meta) {
+    const meta = document.createElement('p');
+    meta.className = 'text__meta';
+    meta.textContent = slide.meta;
+    wrap.append(meta);
+  }
+  if (slide.text) {
+    const text = document.createElement('p');
+    text.className = 'text__overview';
+    text.textContent = slide.text;
+    wrap.append(text);
+  }
+  for (const [label, value] of slide.rows || []) {
     const row = document.createElement('div');
     row.className = 'text__row';
     const name = document.createElement('span');
@@ -1222,48 +1274,132 @@ function fillPeek(card, film) {
     content.className = 'text__value';
     content.textContent = value;
     row.append(name, content);
-    frag.append(row);
+    if (!label) row.classList.add('text__row--seul');
+    wrap.append(row);
+  }
+  return wrap;
+}
+
+/** Affiche un groupe, et arme le compte à rebours du suivant. */
+function showSlide(card, film, index) {
+  const deck = card.__deck;
+  if (!deck) return;
+  deck.at = Math.max(0, Math.min(deck.slides.length - 1, index));
+
+  const slide = deck.slides[deck.at];
+
+  // La barre de segments : où on en est, et le temps qu'il reste.
+  [...deck.bar.children].forEach((seg, i) => {
+    seg.classList.toggle('is-done', i < deck.at);
+    seg.classList.toggle('is-live', i === deck.at && deck.at < deck.slides.length - 1);
+  });
+
+  // Le contenu, remplacé d'un bloc : jamais deux groupes à l'écran.
+  deck.body.replaceChildren(slideBody(slide));
+
+  // Les flèches ne sortent pas de la carte.
+  deck.prev.disabled = deck.at === 0;
+  deck.next.disabled = deck.at === deck.slides.length - 1;
+
+  clearTimeout(deck.timer);
+  if (deck.at < deck.slides.length - 1) {
+    deck.timer = setTimeout(() => {
+      if (card.classList.contains('is-peeking')) showSlide(card, film, deck.at + 1);
+    }, DWELL_MS);
+  }
+}
+
+/** Monte le diaporama dans la carte. */
+function buildDeck(card, film) {
+  if (card.__deck) return card.__deck;
+
+  const layer = card.querySelector('.card__peek');
+  const bar = document.createElement('div');
+  bar.className = 'peek__bar';
+  const body = document.createElement('div');
+  body.className = 'peek__body';
+
+  const layer2 = document.createElement('div');
+  layer2.className = 'peek__plate';
+
+  const slides = filmSlides(film);
+  for (let i = 0; i < slides.length; i++) {
+    const seg = document.createElement('span');
+    seg.className = 'peek__seg';
+    seg.append(document.createElement('i'));
+    bar.append(seg);
   }
 
-  const states = document.createElement('div');
-  states.className = 'peek__states';
-  for (const option of MARKS) {
-    states.append(markChip(film, option, state.marks[keyOf(film)] === option.id, true));
-  }
-  frag.append(states);
+  const prev = document.createElement('button');
+  prev.type = 'button';
+  prev.className = 'peek__arrow peek__arrow--prev';
+  prev.setAttribute('aria-label', 'Information précédente');
+  prev.append(CHEVRON());
 
-  layer.replaceChildren(frag);
+  const next = document.createElement('button');
+  next.type = 'button';
+  next.className = 'peek__arrow peek__arrow--next';
+  next.setAttribute('aria-label', 'Information suivante');
+  next.append(CHEVRON());
+
+  const deck = { slides, at: 0, timer: 0, bar, body, prev, next, film };
+  card.__deck = deck;
+
+  prev.addEventListener('click', event => { event.stopPropagation(); showSlide(card, film, deck.at - 1); });
+  next.addEventListener('click', event => { event.stopPropagation(); showSlide(card, film, deck.at + 1); });
+
+  layer2.append(bar, body);
+  layer.replaceChildren(layer2, prev, next);
+  return deck;
+}
+
+/** Combien de temps on reste sur chaque groupe : ceux qui lisent n'attendent pas. */
+function dwellFor(film) {
+  return DWELL_MS;
 }
 
 /** Le survol n'existe qu'à la souris ; au doigt, c'est la fiche qui s'ouvre. */
 function bindPeek(card, film) {
   if (!canHover()) return;
 
-  let ouvert = false;
   const fermer = () => {
     clearTimeout(peekTimer);
-    ouvert = false;
     card.classList.remove('is-peeking');
-  };
-
-  const ouvrir = async () => {
-    fillPeek(card, film);
-    ouvert = true;
-    card.classList.add('is-peeking');
-    if (film.__detail || !state.live) return;
-    await fetchDetail(film);
-    if (ouvert) fillPeek(card, film);
+    if (card.__deck) clearTimeout(card.__deck.timer);
   };
 
   card.addEventListener('pointerenter', () => {
     clearTimeout(peekTimer);
     // Un délai : on ne déploie pas une fiche en traversant la grille.
-    peekTimer = setTimeout(ouvrir, 240);
+    peekTimer = setTimeout(async () => {
+      buildDeck(card, film);
+      card.classList.add('is-peeking');
+      showSlide(card, film, 0);
+      // Le détail ET les vidéos : sans elles, le dernier groupe n'existe pas.
+      if ((!film.__detail || !film.__videos) && state.live) {
+        await Promise.all([fetchDetail(film), fetchExtras(film)]);
+        // Le détail arrive : on refait les groupes, sans perdre sa place.
+        if (card.classList.contains('is-peeking')) {
+          const at = card.__deck.at;
+          card.__deck = null;
+          buildDeck(card, film);
+          showSlide(card, film, at);
+        }
+      }
+    }, 240);
   });
   card.addEventListener('pointerleave', fermer);
-  card.addEventListener('focus', ouvrir);
+  card.addEventListener('focus', () => {
+    buildDeck(card, film);
+    card.classList.add('is-peeking');
+    showSlide(card, film, 0);
+  });
   card.addEventListener('blur', fermer);
-  card.addEventListener('keydown', event => { if (event.key === 'Escape') fermer(); });
+  card.addEventListener('keydown', event => {
+    if (card.__deck && event.key === 'ArrowRight') { event.preventDefault(); showSlide(card, film, card.__deck.at + 1); }
+    if (card.__deck && event.key === 'ArrowLeft') { event.preventDefault(); showSlide(card, film, card.__deck.at - 1); }
+    if (event.key === 'Escape') fermer();
+  });
 }
 
 /* ── Le dock ──────────────────────────────────────────────────────────────── */

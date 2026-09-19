@@ -1429,71 +1429,114 @@ img { display: block; }
   background: var(--c-line);
 }
 
-/* ── Le survol : la couche sur l'image ───────────────────────────────────── *
-   Pas de volet à côté : l'image s'assombrit et l'information se pose dessus.
-   Le film reste sous les yeux pendant qu'on le lit.                        */
+/* ── Le survol : un diaporama par groupes ────────────────────────────────── *
+   Le survol ne déverse pas tout d'un coup. Des flèches apparaissent sur les
+   côtés de l'image et l'information défile par groupes qui tiennent dans la
+   carte : jamais d'ascenseur. Le dernier groupe est la bande-annonce.       */
 
 .card__peek {
   position: absolute;
   inset: 0;
   z-index: 3;
   display: none;
-  flex-direction: column;
-  gap: 9px;
-  padding: 12px;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  /* L'image s'assombrit franchement : le texte doit tenir sans effort. */
-  background: rgba(6, 8, 13, 0.82);
+  background: rgba(6, 8, 13, 0.86);
   backdrop-filter: blur(3px) saturate(1.15);
-  text-align: left;
   animation: peek-in 200ms var(--e-out);
 }
+.card.is-peeking .card__peek { display: block; }
 
-.card.is-peeking .card__peek { display: flex; }
-/* Le scrim du bas n'a plus lieu d'être quand la couche couvre tout. */
+/* Le pied et l'état s'effacent : la carte est au diaporama. */
 .card.is-peeking .card__scrim,
 .card.is-peeking .card__foot,
 .card.is-peeking .card__state { opacity: 0; }
 
-@keyframes peek-in {
-  from { opacity: 0; }
+@keyframes peek-in { from { opacity: 0; } }
+
+.peek__plate {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 11px 11px 10px;
 }
 
-.card__peek .text__title { font-size: var(--fs-md); }
-.card__peek .text__row { grid-template-columns: 74px minmax(0, 1fr); gap: 8px; }
-.card__peek .text__row { font-size: var(--fs-2xs); }
-.card__peek .text__label { font-size: 8.5px; letter-spacing: 0.1em; }
-.card__peek .text__value { font-size: var(--fs-2xs); }
-.card__peek .text__overview {
+/* La barre de segments : où on en est, et le temps qu'il reste. */
+.peek__bar { display: flex; gap: 3px; flex: 0 0 auto; margin-bottom: 10px; }
+.peek__seg {
+  flex: 1;
+  height: 2px;
+  border-radius: 2px;
+  background: rgba(242, 238, 230, 0.22);
+  overflow: hidden;
+}
+.peek__seg i {
+  display: block;
+  height: 100%;
+  background: var(--c-accent);
+  transform: scaleX(0);
+  transform-origin: left;
+}
+.peek__seg.is-done i { transform: scaleX(1); }
+/* Le compte à rebours : la durée est écrite ici ET dans DWELL_MS, dans card.js. */
+.peek__seg.is-live i { animation: seg-fill 5200ms linear forwards; }
+@keyframes seg-fill { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+
+/* Le groupe occupe la carte et n'en sort jamais. */
+.peek__body { flex: 1; min-height: 0; overflow: hidden; }
+.peek__slide { display: grid; align-content: start; gap: 8px; height: 100%; overflow: hidden; }
+
+.peek__slide .text__title { font-size: var(--fs-md); }
+.peek__slide .text__meta { font-size: 8.5px; letter-spacing: 0.1em; }
+.peek__slide .text__overview {
   font-size: var(--fs-2xs);
   line-height: 1.5;
   display: -webkit-box;
-  -webkit-line-clamp: 6;
+  -webkit-line-clamp: 7;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
-.card__peek .text__meta { font-size: 8.5px; letter-spacing: 0.11em; }
+.peek__slide .text__row { grid-template-columns: 66px minmax(0, 1fr); gap: 8px; padding-top: 8px; }
+.peek__slide .text__label { font-size: 8.5px; letter-spacing: 0.09em; }
+.peek__slide .text__value { font-size: var(--fs-2xs); line-height: 1.4; }
+.peek__slide .text__row--seul { grid-template-columns: minmax(0, 1fr); }
 
-.peek__states {
+/* Le moment : plein cadre, sans texte autour. */
+.peek__moment { position: relative; height: 100%; overflow: hidden; border-radius: 3px; background: #000; }
+.peek__moment iframe {
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  border: 0;
+  pointer-events: none;
+}
+
+/* Les flèches, sur les côtés de l'image. */
+.peek__arrow {
+  position: absolute;
+  top: 50%;
+  z-index: 4;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 5px;
-  margin-top: auto;
-  padding-top: 10px;
-  border-top: 1px solid var(--c-line);
+  place-items: center;
+  width: 30px;
+  height: 38px;
+  margin-top: -19px;
+  padding: 0;
+  border: 0;
+  border-radius: 9px;
+  background: rgba(6, 8, 13, 0.66);
+  backdrop-filter: blur(4px);
+  cursor: pointer;
+  transition: opacity var(--d-base) var(--e-out), background var(--d-base) var(--e-out);
 }
-.peek__states .mark {
-  height: 30px;
-  padding: 0 7px 0 5px;
-  font-size: 9.5px;
-  justify-content: flex-start;
-}
-.peek__states .mark img { width: 14px; height: 14px; }
-
-/* Les états ne sont pas cliquables au survol : on ne clique pas à travers une
-   couche qu'on n'a pas ouverte. Ils informent, la fiche agit. */
-.card__peek .mark { pointer-events: none; }
+.peek__arrow:hover { background: rgba(6, 8, 13, 0.88); }
+.peek__arrow:disabled { opacity: 0.22; cursor: default; }
+.peek__arrow--prev { left: 7px; }
+.peek__arrow--next { right: 7px; }
+.peek__arrow .chev { width: 9px; height: 9px; }
+.peek__arrow--prev .chev { transform: rotate(45deg) translate(1px, -1px); }
+.peek__arrow--next .chev { transform: rotate(225deg) translate(1px, -1px); }
 
 /* ── Écrans larges ───────────────────────────────────────────────────────── *
    Le prototype était pensé pour un téléphone ; à la souris il faut de la
