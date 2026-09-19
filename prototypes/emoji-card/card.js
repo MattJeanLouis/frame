@@ -57,6 +57,8 @@ const wallEl = el('wall');
 const cardEl_ = el('card');
 const mirrorEl = el('mirror');
 const statusEl = el('status');
+const progressEl = el('progress');
+const progressBar = progressEl.firstElementChild;
 
 const state = {
   credential: '',
@@ -71,6 +73,9 @@ const state = {
   paletteOpen: false,
   composing: false,
   preset: 'carton',
+  // Où on en était dans chaque présentation : changer de mode ne doit jamais
+  // faire perdre sa place.
+  scroll: { film: { top: 0, left: 0 }, video: { top: 0, left: 0 }, reel: { top: 0, left: 0 } },
   reactions: {},
   marks: {},
   comments: {}
@@ -230,11 +235,67 @@ async function fetchVideos(film) {
   return film.videos;
 }
 
-/** Affiche vivante : en boucle, muette, sans commandes — pas un lecteur. */
+/** Affiche vivante : en boucle, muette, sans commandes — pas un lecteur.
+ *  `enablejsapi` ouvre le dialogue : le lecteur annonce lui-même quand il joue. */
 function momentUrl(key) {
   return 'https://www.youtube.com/embed/' + key +
     '?autoplay=1&mute=1&controls=0&loop=1&playlist=' + key +
-    '&modestbranding=1&rel=0&playsinline=1&disablekb=1&iv_load_policy=3';
+    '&modestbranding=1&rel=0&playsinline=1&disablekb=1&iv_load_policy=3&fs=0' +
+    '&enablejsapi=1&origin=' + encodeURIComponent(location.origin);
+}
+
+const YOUTUBE_PLAYING = 1;
+
+/**
+ * N'affiche le lecteur que lorsqu'il joue vraiment.
+ *
+ * Un lecteur à l'arrêt montre ses propres commandes au centre du cadre — que
+ * le recadrage ne peut pas enlever, puisqu'elles sont au milieu. On écoute donc
+ * l'état du lecteur par `postMessage` : tant qu'il ne joue pas, c'est l'image
+ * fixe qui reste à l'écran, et YouTube n'apparaît jamais.
+ */
+function watchPlayer(frame) {
+  window.addEventListener('message', event => {
+    if (typeof event.data !== 'string') return;
+    if (event.source !== frame.contentWindow) return;
+    let data;
+    try { data = JSON.parse(event.data); } catch { return; }
+    if (data.event !== 'infoDelivery' || !data.info) return;
+    if (data.info.playerState === YOUTUBE_PLAYING) {
+      frame.classList.add('is-live');
+      frame.closest('.reel__stage, .card-stage')?.querySelector('.reel__play')?.remove();
+    }
+  });
+
+  frame.addEventListener('load', () => {
+    // Le lecteur n'écoute qu'une fois ce message reçu.
+    frame.contentWindow?.postMessage(
+      JSON.stringify({ event: 'listening', id: frame.dataset.player, channel: 'widget' }), '*');
+  });
+}
+
+/**
+ * Si le moment ne démarre pas — mode économie d'énergie, économiseur de
+ * données, lecture bloquée — on l'offre plutôt que de le subir : un geste réel
+ * garantit la lecture, et un lecteur qui joue n'affiche plus ses commandes.
+ */
+function armPlayFallback(stage, key) {
+  if (!stage || !key) return;
+  setTimeout(() => {
+    const frame = stage.querySelector('iframe');
+    if (!frame || frame.classList.contains('is-live')) return;
+    const play = document.createElement('button');
+    play.type = 'button';
+    play.className = 'reel__play';
+    play.setAttribute('aria-label', 'Lancer le moment');
+    play.append(emojiImg('▶️'));
+    play.addEventListener('click', () => {
+      play.remove();
+      frame.src = momentUrl(key) + '&start=0';
+      watchPlayer(frame);
+    });
+    stage.append(play);
+  }, 4000);
 }
 
 /* ── Fabriques d'éléments ─────────────────────────────────────────────────── */
@@ -264,6 +325,36 @@ function posterEl(film, className) {
   return blank;
 }
 
+/**
+ * L'image fixe qui reste sous le moment.
+ *
+ * On prend une vraie image de la vidéo, pas l'affiche : si l'autoplay est
+ * bloqué — mode économie d'énergie, économiseur de données — YouTube montre
+ * son propre lecteur, et au moins l'image dessous est celle du moment et non
+ * une autre. Quand la vidéo démarre, la transition est invisible.
+ *
+ * YouTube renvoie une vignette grise de 120 px au lieu d'une erreur quand la
+ * grande définition n'existe pas : on la reconnaît à sa largeur.
+ */
+function stillEl(film, video, className) {
+  const poster = film.poster_path ? state.client.posterUrl(film.poster_path, 'w780') : null;
+  const img = document.createElement('img');
+  img.className = className;
+  img.alt = '';
+  img.loading = 'lazy';
+
+  if (video) {
+    img.src = 'https://img.youtube.com/vi/' + video.key + '/maxresdefault.jpg';
+    img.addEventListener('load', () => {
+      if (img.naturalWidth < 200 && poster) img.src = poster;
+    });
+    img.addEventListener('error', () => { if (poster) img.src = poster; });
+  } else if (poster) {
+    img.src = poster;
+  }
+  return img;
+}
+
 /* ── Le mur ───────────────────────────────────────────────────────────────── */
 
 function renderSkeletons(count = 8) {
@@ -274,6 +365,15 @@ function renderSkeletons(count = 8) {
     frag.append(s);
   }
   wallEl.replaceChildren(frag);
+}
+
+/** Le libellé accessible d'une carte du mur : le seul endroit où le vrai titre
+ *  vit. C'est le même contenu pour qui ne voit pas l'écran. */
+function wallLabel(film, signature, mark) {
+  const labels = signature.map(id => STICKER_BY_ID.get(id)?.label).filter(Boolean).join(', ');
+  const etat = mark === 'seen' ? 'Vu' : mark === 'want' ? 'À voir' : 'Sans état';
+  return film.title + (film.release_date ? ', ' + film.release_date.slice(0, 4) : '') +
+    '. ' + etat + '. Signature : ' + (labels || 'aucune');
 }
 
 function wallCard(film, index) {
@@ -288,13 +388,8 @@ function wallCard(film, index) {
   if (mark) card.dataset.mark = mark;
   card.style.setProperty('--delay', Math.min(index, 12) * 45 + 'ms');
 
-  // Le libellé accessible : le seul endroit où le vrai titre vit. C'est le
-  // même contenu pour qui ne voit pas l'écran, pas une concession.
-  const labels = signature.map(id => STICKER_BY_ID.get(id)?.label).filter(Boolean).join(', ');
-  const stateLabel = mark === 'seen' ? 'Vu' : mark === 'want' ? 'À voir' : 'Sans état';
-  card.setAttribute('aria-label',
-    film.title + (film.release_date ? ', ' + film.release_date.slice(0, 4) : '') +
-    '. ' + stateLabel + '. Signature : ' + (labels || 'aucune'));
+  // Le libellé accessible est posé par wallLabel : une seule source.
+  card.setAttribute('aria-label', wallLabel(film, signature, mark));
 
   if (hero && film.poster_path) {
     const blur = document.createElement('img');
@@ -329,6 +424,42 @@ function wallCard(film, index) {
   return card;
 }
 
+/**
+ * Corriger une seule carte du mur, sans le reconstruire.
+ * Reconstruire faisait perdre la position de défilement à chaque retour de
+ * fiche, et rejouait l'animation d'arrivée des vingt affiches.
+ */
+function refreshWallCard(film) {
+  const signature = signatureOf(film);
+  const mark = state.marks[film.id];
+
+  for (const card of wallEl.querySelectorAll('.card[data-id="' + film.id + '"]')) {
+    const sig = card.querySelector('.card__sig');
+    if (sig) {
+      sig.replaceChildren(...signature
+        .map(id => STICKER_BY_ID.get(id))
+        .filter(Boolean)
+        .map(sticker => emojiImg(sticker.emoji)));
+    }
+
+    const badge = card.querySelector('.card__state');
+    if (mark && badge) badge.replaceChildren(emojiImg(mark === 'seen' ? SEEN : WANT));
+    else if (mark) {
+      const fresh = document.createElement('span');
+      fresh.className = 'card__state';
+      fresh.append(emojiImg(mark === 'seen' ? SEEN : WANT));
+      card.append(fresh);
+    } else if (badge) {
+      badge.remove();
+    }
+
+    if (mark) card.dataset.mark = mark;
+    else delete card.dataset.mark;
+
+    card.setAttribute('aria-label', wallLabel(film, signature, mark));
+  }
+}
+
 function renderWall() {
   if (!state.wall.length) {
     const empty = document.createElement('p');
@@ -338,6 +469,32 @@ function renderWall() {
     return;
   }
   wallEl.replaceChildren(...state.wall.map((id, i) => wallCard(state.films.get(id), i)));
+  restoreScroll('film');
+}
+
+/* ── Où on en est ─────────────────────────────────────────────────────────── */
+
+function saveScroll() {
+  state.scroll[state.mode] = { top: wallEl.scrollTop, left: wallEl.scrollLeft };
+}
+
+function restoreScroll(mode) {
+  const at = state.scroll[mode] || { top: 0, left: 0 };
+  wallEl.scrollTop = at.top;
+  wallEl.scrollLeft = at.left;
+  updateProgress();
+}
+
+/** La barre dit où tu en es dans le fil, sans un chiffre. */
+function updateProgress() {
+  const horizontal = state.mode === 'video';
+  const max = horizontal
+    ? wallEl.scrollWidth - wallEl.clientWidth
+    : wallEl.scrollHeight - wallEl.clientHeight;
+  const at = horizontal ? wallEl.scrollLeft : wallEl.scrollTop;
+  const ratio = max > 8 ? Math.min(1, Math.max(0, at / max)) : 0;
+  progressEl.classList.toggle('is-on', max > 8);
+  progressBar.style.transform = 'scaleX(' + ratio + ')';
 }
 
 /* ── Les trois présentations ──────────────────────────────────────────────── */
@@ -359,13 +516,25 @@ function renderModes() {
 }
 
 /** Changer de présentation ne change jamais ce que tu as dit d'un film. */
-function setMode(id) {
+async function setMode(id) {
   if (state.mode === id) return;
+  saveScroll();          // on retient où on en était
   state.mode = id;
   appEl.className = 'mode-' + id;
   renderModes();
   announce(MODES.find(m => m.id === id)?.label || '');
-  show();
+  await show();          // et on y retourne
+  fadeIn();              // sans que la bascule ne fasse claquer l'écran
+}
+
+/** Une bascule de mode est un changement de point de vue, pas un saut. */
+function fadeIn() {
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  if (typeof wallEl.animate !== 'function') return;
+  wallEl.animate([{ opacity: 0.25 }, { opacity: 1 }], {
+    duration: 240,
+    easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)'
+  });
 }
 
 /** Ce qu'on montre quand rien n'est cherché. */
@@ -460,14 +629,7 @@ function reelCard(item, index) {
   const stage = document.createElement('div');
   stage.className = 'reel__stage';
 
-  if (film.poster_path) {
-    const still = document.createElement('img');
-    still.className = 'reel__still';
-    still.src = state.client.posterUrl(film.poster_path, 'w780');
-    still.alt = '';
-    still.loading = index < 3 ? 'eager' : 'lazy';
-    stage.append(still);
-  }
+  if (film.poster_path || video) stage.append(stillEl(film, video, 'reel__still'));
 
   if (video) {
     const frame = document.createElement('iframe');
@@ -559,7 +721,11 @@ const momentObserver = new IntersectionObserver(entries => {
     const frame = entry.target.querySelector('iframe[data-key]');
     if (!frame) continue;
     if (entry.isIntersecting) {
-      if (!frame.getAttribute('src')) frame.src = momentUrl(frame.dataset.key);
+      if (!frame.getAttribute('src')) {
+        frame.src = momentUrl(frame.dataset.key);
+        watchPlayer(frame);
+        armPlayFallback(frame.closest('.reel__stage'), frame.dataset.key);
+      }
     } else if (frame.getAttribute('src')) {
       frame.removeAttribute('src');
       frame.classList.remove('is-live');
@@ -582,6 +748,30 @@ function renderFeed() {
   }
   wallEl.replaceChildren(...state.items.map((item, i) => reelCard(item, i)));
   observeMoments();
+  restoreScroll(state.mode);
+}
+
+/* ── Passer d'un film à l'autre ───────────────────────────────────────────── */
+
+/** La liste courante, dans l'ordre de la présentation, sans doublon. */
+function currentList() {
+  if (state.mode === 'film') return state.wall;
+  return [...new Set(state.items.map(item => item.film.id))];
+}
+
+function filmAt(index) {
+  const list = currentList();
+  return index >= 0 && index < list.length ? state.films.get(list[index]) : null;
+}
+
+/** Sans ressortir de la fiche : c'est le geste qui manquait le plus. */
+function stepFilm(direction) {
+  const list = currentList();
+  const at = list.indexOf(current?.id);
+  if (at < 0) return;
+  const next = filmAt(at + direction);
+  if (!next) return;
+  openCard(next.id);
 }
 
 async function loadWall() {
@@ -614,6 +804,9 @@ async function search() {
   if (!placed.length) return show();
 
   const dansLeFil = state.mode !== 'film';
+  // Une recherche neuve repart du début : on ne garde pas une position qui ne
+  // veut plus rien dire.
+  state.scroll[state.mode] = { top: 0, left: 0 };
   if (dansLeFil) renderFeedSkeleton();
   else renderSkeletons(6);
 
@@ -1041,23 +1234,18 @@ function renderCardView(film) {
   stage.className = 'card-stage';
 
   // L'affiche reste dessous : si le moment ne vient pas, il n'y a pas de trou.
-  if (film.poster_path) {
-    const still = document.createElement('img');
-    still.className = 'card-stage__still';
-    still.src = state.client.posterUrl(film.poster_path, 'w780');
-    still.alt = '';
-    stage.append(still);
-  }
+  if (film.poster_path || moment) stage.append(stillEl(film, moment, 'card-stage__still'));
 
   if (moment) {
     const frame = document.createElement('iframe');
     frame.src = momentUrl(moment.key);
+    frame.dataset.player = 'fiche';
     frame.setAttribute('allow', 'autoplay; encrypted-media');
     frame.setAttribute('tabindex', '-1');
     frame.setAttribute('aria-hidden', 'true');
-    // Le moment n'apparaît que lorsqu'il est prêt : jamais de cadre noir.
-    frame.addEventListener('load', () => frame.classList.add('is-live'));
     stage.append(frame);
+    watchPlayer(frame);
+    armPlayFallback(stage, moment.key);
   } else if (!film.poster_path) {
     stage.append(posterEl(film, ''));
   }
@@ -1070,6 +1258,39 @@ function renderCardView(film) {
   back.append(Object.assign(document.createElement('span'), { className: 'chev' }));
   back.addEventListener('click', closeCard);
   top.append(back);
+
+  /* Passer au film suivant sans ressortir. Le geste a un signifiant visible :
+     un glissement qu'on ne voit pas n'en est pas un. */
+  const at = currentList().indexOf(film.id);
+  for (const [direction, suffix, label] of [[-1, 'prev', 'Film précédent'], [1, 'next', 'Film suivant']]) {
+    if (!filmAt(at + direction)) continue;
+    const nav = document.createElement('button');
+    nav.type = 'button';
+    nav.className = 'card-nav card-nav--' + suffix;
+    nav.setAttribute('aria-label', label);
+    nav.append(Object.assign(document.createElement('span'), { className: 'chev' }));
+    nav.addEventListener('click', () => stepFilm(direction));
+    top.append(nav);
+  }
+
+  // Et le glissement, pour le pouce : horizontal sur le moment seulement, pour
+  // ne pas entrer en conflit avec le défilement vertical du corps.
+  let fromX = 0;
+  let fromY = 0;
+  let tracking = false;
+  stage.addEventListener('pointerdown', event => {
+    tracking = true;
+    fromX = event.clientX;
+    fromY = event.clientY;
+  });
+  stage.addEventListener('pointerup', event => {
+    if (!tracking) return;
+    tracking = false;
+    const dx = event.clientX - fromX;
+    const dy = event.clientY - fromY;
+    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) stepFilm(dx < 0 ? 1 : -1);
+  });
+  stage.addEventListener('pointercancel', () => { tracking = false; });
 
   frag.append(top);
 
@@ -1101,7 +1322,7 @@ function renderCardView(film) {
  * les morceaux concernés, sur place.
  */
 function updateBackground(film) {
-  if (state.mode === 'film') renderWall();
+  if (state.mode === 'film') refreshWallCard(film);
   else refreshReels(film);
 }
 
@@ -1311,10 +1532,17 @@ function start() {
   state.client = state.live ? createClient({ credential: state.credential }) : createDemoClient();
 
   el('btn-mirror').addEventListener('click', openMirror);
+  wallEl.addEventListener('scroll', updateProgress, { passive: true });
   document.addEventListener('keydown', event => {
-    if (event.key !== 'Escape') return;
-    if (!mirrorEl.hidden) closeMirror();
-    else if (!cardEl_.hidden) closeCard();
+    if (event.key === 'Escape') {
+      if (!mirrorEl.hidden) closeMirror();
+      else if (!cardEl_.hidden) closeCard();
+      return;
+    }
+    // Les flèches passent d'un film à l'autre — la télécommande viendra par là.
+    if (cardEl_.hidden || state.composing) return;
+    if (event.key === 'ArrowRight') { event.preventDefault(); stepFilm(1); }
+    if (event.key === 'ArrowLeft') { event.preventDefault(); stepFilm(-1); }
   });
 
   // Le mode peut venir de l'URL : un lien partage aussi une présentation.

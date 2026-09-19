@@ -65,6 +65,27 @@ img { display: block; }
   background: linear-gradient(var(--c-bg) 55%, transparent);
 }
 
+/* Où tu en es dans le fil : une barre qui se remplit, jamais un compteur. */
+#progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  overflow: hidden;
+  opacity: 0;
+  transition: opacity var(--d-base) var(--e-out);
+}
+#progress.is-on { opacity: 1; }
+#progress i {
+  display: block;
+  height: 100%;
+  background: var(--c-accent);
+  transform-origin: left;
+  transform: scaleX(0);
+  transition: transform 110ms linear;
+}
+
 /* La marque est une forme, pas un mot. */
 .mark {
   width: 20px; height: 20px;
@@ -138,6 +159,63 @@ img { display: block; }
   padding: 0;
 }
 .mode-reel #wall::-webkit-scrollbar { display: none; }
+
+/* Le mode vertical se prend tout l'écran : le dock de recherche s'efface.
+   On cherche dans les deux autres modes ; ici, on regarde. */
+.mode-reel #dock { display: none; }
+
+/* Passer au film suivant sans ressortir : deux chevrons sur les bords du
+   moment. Un geste invisible n'est pas un signifiant. */
+.card-nav {
+  position: absolute;
+  top: 50%;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 66px;
+  margin-top: -33px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: rgba(6, 8, 13, 0.5);
+  backdrop-filter: blur(4px);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  opacity: 0.7;
+  transition: opacity var(--d-base) var(--e-out);
+}
+.card-nav:hover { opacity: 1; }
+.card-nav--prev { left: 8px; }
+.card-nav--next { right: 8px; }
+.card-nav--prev .chev { transform: rotate(45deg) translate(1px, -1px); }
+.card-nav--next .chev { transform: rotate(225deg) translate(1px, -1px); }
+
+/* Le toucher répond : sans cela, une carte ne se sent pas vivante. */
+.reel__open:active { background: rgba(242, 238, 230, 0.05); }
+
+/* Quand le moment ne démarre pas tout seul, on l'offre. Un lecteur qui joue
+   n'affiche plus ses commandes : le geste les fait disparaître. */
+.reel__play {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 3;
+  transform: translate(-50%, -50%);
+  display: grid;
+  place-items: center;
+  width: 68px;
+  height: 68px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(6, 8, 13, 0.55);
+  backdrop-filter: blur(5px);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  animation: rise 320ms var(--e-out) both;
+}
+.reel__play img { width: 30px; height: 30px; }
 
 .card {
   position: relative;
