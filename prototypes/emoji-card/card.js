@@ -1307,14 +1307,14 @@ async function renderForYou() {
    la bande-annonce.                                                        */
 
 const canHover = () => matchMedia('(hover: hover) and (pointer: fine)').matches;
-const DWELL_MS = 5200;
 let peekTimer = 0;
 
 const CHEVRON = () => Object.assign(document.createElement('span'), { className: 'chev' });
 
 /** Les groupes, dans l'ordre. Le moment vient toujours en dernier. */
 function filmSlides(film) {
-  const slides = [];
+  // L'affiche d'abord : on ouvre sur le film, pas sur un paragraphe.
+  const slides = [{ kind: 'affiche', nom: 'Affiche' }];
 
   // 1 — de quoi ça parle
   slides.push({
@@ -1353,6 +1353,9 @@ function filmSlides(film) {
 function slideBody(slide) {
   const wrap = document.createElement('div');
   wrap.className = 'peek__slide';
+
+  // L'affiche ne pose rien : c'est l'image, et les actions par-dessus.
+  if (slide.kind === 'affiche') return wrap;
 
   if (slide.kind === 'moment') {
     const stage = document.createElement('div');
@@ -1410,11 +1413,7 @@ function showSlide(card, film, index) {
 
   const slide = deck.slides[deck.at];
 
-  // La barre de segments : où on en est, et le temps qu'il reste.
-  [...deck.bar.children].forEach((seg, i) => {
-    seg.classList.toggle('is-done', i < deck.at);
-    seg.classList.toggle('is-live', i === deck.at && deck.at < deck.slides.length - 1);
-  });
+  [...deck.bar.children].forEach((seg, i) => seg.classList.toggle('is-done', i < deck.at));
 
   // Le contenu, remplacé d'un bloc : jamais deux groupes à l'écran.
   deck.body.replaceChildren(slideBody(slide));
@@ -1424,12 +1423,83 @@ function showSlide(card, film, index) {
     bouton.setAttribute('aria-current', String(i === deck.at));
   });
 
-  clearTimeout(deck.timer);
-  if (deck.at < deck.slides.length - 1) {
-    deck.timer = setTimeout(() => {
-      if (card.classList.contains('is-peeking')) showSlide(card, film, deck.at + 1);
-    }, DWELL_MS);
+  // Plus de compte à rebours : on va où on veut, quand on veut.
+  card.classList.toggle('is-affiche', slide.kind === 'affiche');
+}
+
+/** Un état qui bascule : c'est le geste le plus fréquent, il doit être immédiat. */
+function toggleMark(film, value) {
+  const at = keyOf(film);
+  if (state.marks[at] === value) delete state.marks[at];
+  else state.marks[at] = value;
+  saveStore();
+  renderFilters();
+  refresh(film);
+  return state.marks[at] === value;
+}
+
+/** Chercher des films comme celui-ci : sa signature devient la requête. */
+function searchLike(film) {
+  state.picked = signatureOf(film).slice();
+  state.forYou = false;
+  renderQueryChips();
+  renderPalette();
+  renderFilters();
+  show();
+  announce('Recherche par la signature de ' + film.title + '.');
+}
+
+/** Les films similaires, d'après TMDB. */
+async function showSimilar(film) {
+  renderSkeletons(12);
+  const items = await recommendationsOf(film);
+  state.wall = items;
+  state.more = false;
+  state.pageLoader = null;
+  state.scroll.film = { top: 0, left: 0 };
+  renderWall();
+  announce(items.length + ' films similaires à ' + film.title + '.');
+}
+
+/**
+ * En haut de la carte : ce qu'on veut faire d'un film, d'un seul geste.
+ * Vue, j'aime, ma liste — puis chercher comme ça, et les films similaires.
+ */
+function buildActions(card, film) {
+  const row = document.createElement('div');
+  row.className = 'peek__actions';
+
+  const actions = [
+    ['seen', '👁️', 'Vu'],
+    ["love", "❤️", "J'adore"],
+    ['want', '🎟️', 'Dans ma liste'],
+    [null, '🔍', 'Chercher des films comme celui-ci'],
+    [null, '🎬', 'Films similaires']
+  ];
+
+  for (const [mark, emoji, label] of actions) {
+    const bouton = document.createElement('button');
+    bouton.type = 'button';
+    bouton.className = 'peek__act';
+    bouton.dataset.act = mark || (emoji === '🔍' ? 'search' : 'similar');
+    bouton.setAttribute('aria-label', label);
+    bouton.title = label;
+    if (mark) bouton.setAttribute('aria-pressed', String(state.marks[keyOf(film)] === mark));
+    bouton.append(emojiImg(emoji));
+    bouton.addEventListener('click', event => {
+      event.stopPropagation();
+      if (mark) {
+        const actif = toggleMark(film, mark);
+        bouton.setAttribute('aria-pressed', String(actif));
+        announce(label + (actif ? ' activé.' : ' désactivé.'));
+        return;
+      }
+      if (emoji === '🔍') searchLike(film);
+      else showSimilar(film);
+    });
+    row.append(bouton);
   }
+  return row;
 }
 
 /** Monte le diaporama dans la carte. */
@@ -1450,22 +1520,6 @@ function buildDeck(card, film) {
   // Le deck est déclaré AVANT ses boutons : ils le referencent dans showSlide.
   const deck = { slides, at: 0, timer: 0, bar, body, onglets: [], film };
   card.__deck = deck;
-  /* Les segments sont cliquables : ils en ont l'air, donc ils doivent l'être.
-     On ne fait pas cliquer sur une barre qui ne répond pas. */
-  for (let i = 0; i < slides.length; i++) {
-    const seg = document.createElement('button');
-    seg.type = 'button';
-    seg.className = 'peek__seg';
-    seg.setAttribute('aria-label', 'Information ' + (i + 1) + ' sur ' + slides.length);
-    seg.append(document.createElement('i'));
-    seg.addEventListener('click', event => {
-      event.stopPropagation();
-      clearTimeout(peekTimer);
-      showSlide(card, film, i);
-    });
-    bar.append(seg);
-  }
-
   /* Des raccourcis nommés plutôt que des flèches : on voit CE QU'ON PEUT voir,
      au lieu d'avancer à l'aveugle. Discrets, mais on sait où on va. */
   const jump = document.createElement('div');
@@ -1484,15 +1538,10 @@ function buildDeck(card, film) {
     return bouton;
   });
 
-  layer2.append(bar, body, jump);
+  layer2.append(buildActions(card, film), bar, body, jump);
   layer.replaceChildren(layer2);
   deck.onglets = onglets;
   return deck;
-}
-
-/** Combien de temps on reste sur chaque groupe : ceux qui lisent n'attendent pas. */
-function dwellFor(film) {
-  return DWELL_MS;
 }
 
 /** Le survol n'existe qu'à la souris ; au doigt, c'est la fiche qui s'ouvre. */
@@ -1503,6 +1552,7 @@ function bindPeek(card, film) {
   const fermer = () => {
     clearTimeout(peekTimer);
     card.classList.remove('is-peeking');
+    card.classList.remove('is-affiche');
     if (card.__deck) clearTimeout(card.__deck.timer);
   };
   /* Un délai avant de fermer : le moindre écart de souris emportait la
@@ -1528,6 +1578,7 @@ function bindPeek(card, film) {
            les données sont arrivées après. */
         if (card.classList.contains('is-peeking')) {
           const voulu = card.__deck.slides[card.__deck.at]?.nom;
+          card.classList.remove('is-affiche');
           card.__deck = null;
           buildDeck(card, film);
           const ou = card.__deck.slides.findIndex(s => s.nom === voulu);

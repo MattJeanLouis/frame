@@ -1510,6 +1510,43 @@ img { display: block; }
   padding: 11px 11px 10px;
 }
 
+/* En haut : ce qu'on veut faire du film, d'un seul geste. */
+.peek__actions {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 3px;
+  margin: -11px -11px 9px;
+  padding: 8px 11px 7px;
+  background: linear-gradient(rgba(6, 8, 13, 0.92), transparent);
+}
+.peek__act {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: rgba(242, 238, 230, 0.07);
+  cursor: pointer;
+}
+.peek__act img { width: 18px; height: 18px; opacity: 0.72; transition: opacity var(--d-fast) var(--e-out); }
+.peek__act:hover { background: rgba(242, 238, 230, 0.14); }
+.peek__act:hover img { opacity: 1; }
+.peek__act[aria-pressed="true"] {
+  border-color: var(--c-accent);
+  background: color-mix(in oklab, var(--c-accent) 20%, transparent);
+}
+.peek__act[aria-pressed="true"] img { opacity: 1; }
+/* Les deux derniers ne sont pas des états : un trait les sépare. */
+.peek__act[data-act="search"] { margin-left: auto; }
+
+/* Sur l'affiche, la couche s'efface : on voit le film, et les actions. */
+.card.is-affiche .card__peek { background: transparent; backdrop-filter: none; }
+.card.is-affiche .peek__body { display: none; }
+.card.is-affiche .peek__actions { background: linear-gradient(rgba(6, 8, 13, 0.86), transparent); }
+.card.is-affiche .peek__jump { background: linear-gradient(transparent, rgba(6, 8, 13, 0.86)); }
+
 /* La barre de segments : où on en est, et le temps qu'il reste. */
 .peek__bar { display: flex; gap: 3px; flex: 0 0 auto; margin: -7px 0 4px; }
 /* Le trait fait 3 px, mais la cible en fait 17 : on clique sur l'onglet, pas
@@ -1593,6 +1630,8 @@ img { display: block; }
 /* Les raccourcis nommés : discrets, mais on lit où on va. */
 .peek__jump {
   flex: 0 0 auto;
+  margin: 9px -11px -10px;
+  padding: 8px 11px 10px;
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
