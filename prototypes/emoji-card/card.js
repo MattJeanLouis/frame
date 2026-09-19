@@ -834,13 +834,25 @@ function reelCard(item, index) {
   veil.className = 'reel__veil';
   stage.append(veil);
 
+  /* Le même pied que le mur : l'accroche emoji, puis le titre. Sans le titre,
+     un mode ne se lisait pas et l'autre si. */
+  const foot = document.createElement('div');
+  foot.className = 'reel__foot';
+
   const sig = document.createElement('div');
   sig.className = 'reel__sig';
   for (const id of signature) {
     const sticker = STICKER_BY_ID.get(id);
     if (sticker) sig.append(emojiImg(sticker.emoji));
   }
-  stage.append(sig);
+  foot.append(sig);
+
+  const nom = document.createElement('span');
+  nom.className = 'reel__name';
+  nom.textContent = film.title;
+  foot.append(nom);
+
+  stage.append(foot);
 
   if (mark) {
     const badge = document.createElement('span');
@@ -866,17 +878,6 @@ function reelCard(item, index) {
     react.append(reactionButton(film, sticker, signature, signature.includes(sticker.id)));
   }
   card.append(react);
-
-  // Dans le fil horizontal, on marque le film sans ouvrir la fiche.
-  if (state.mode === 'video') {
-    const marks = document.createElement('div');
-    marks.className = 'reel__marks';
-    for (const option of MARKS) {
-      const button = markChip(film, option, mark === option.id, true);
-      marks.append(button);
-    }
-    card.append(marks);
-  }
 
   return card;
 }

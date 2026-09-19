@@ -945,12 +945,33 @@ img { display: block; }
 }
 
 /* La signature : le nom du film, nu, par-dessus l'image. */
-.reel__sig {
+.reel__foot {
   position: absolute;
-  left: 12px; bottom: 10px;
-  display: flex;
+  left: 12px;
+  right: 12px;
+  bottom: 10px;
+  z-index: 2;
+  display: grid;
   gap: 5px;
   pointer-events: none;
+}
+
+.reel__sig {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.reel__name {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--c-text);
+  text-shadow: 0 2px 9px rgba(0, 0, 0, 0.95);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 .reel__sig img { width: 30px; height: 30px; filter: drop-shadow(0 2px 7px rgba(0, 0, 0, 0.9)); }
 .reel__sig img:first-child { width: 36px; height: 36px; }
@@ -1091,7 +1112,8 @@ img { display: block; }
   border-radius: 11px;
 }
 .state--sm img { width: 24px; height: 24px; }
-.mode-reel .reel__sig { left: 16px; bottom: 92px; }
+.mode-reel .reel__foot { left: 16px; right: 74px; bottom: 82px; }
+.mode-reel .reel__name { font-size: var(--fs-lg); }
 .mode-reel .reel__sig img { width: 32px; height: 32px; }
 .mode-reel .reel__sig img:first-child { width: 40px; height: 40px; }
 .mode-reel .reel__react {
@@ -1326,8 +1348,10 @@ img { display: block; }
   padding: 2px 16px 10px;
 }
 
-/* Le mode vertical se prend tout l'écran : ni recherche ni filtres. */
-.mode-reel #tools { display: none; }
+/* Les trois modes portent les mêmes outils. Le vertical perd un peu de hauteur,
+   mais on cherche et on filtre partout pareil — c'est ce que veut dire
+   « raccord ». Le dock, lui, reste un panneau : l'immersion est là. */
+.mode-reel #tools { padding-bottom: 8px; }
 
 .search {
   position: relative;
@@ -1755,5 +1779,81 @@ img { display: block; }
   .quote__text, .quote--filets::after, .quote--filets .quote__rule, .composer__budget i {
     animation: none !important;
     transition: none !important;
+  }
+}
+
+/* ── Un seul système de boutons ──────────────────────────────────────────── *
+   Tout ce qui se touche parle le même langage : même courbe, mêmes états,
+   même rayon. C'est ce qui rend les trois modes raccord — aucun bouton n'a le
+   droit d'avoir sa propre idée du survol.
+
+   Inventaire avant : sur dix-huit classes de boutons, trois avaient un survol,
+   deux un état pressé, une un focus. Le reste ne répondait pas.              */
+
+:where(button, [role="button"]) {
+  -webkit-tap-highlight-color: transparent;
+  transition: transform var(--d-fast) var(--e-out),
+              border-color var(--d-base) var(--e-out),
+              background var(--d-base) var(--e-out),
+              color var(--d-base) var(--e-out),
+              opacity var(--d-base) var(--e-out);
+}
+
+/* Le focus : visible partout, à la même distance, à la même couleur. */
+:where(button, [role="button"]):focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: 2px;
+}
+
+/* Le survol : un éclaircissement, jamais un saut. */
+:where(.hbtn, .glyph, .mode-btn, .filter, .drawer-sym, .pick, .mark, .state,
+       .preset, .query-chip, .sig__slot, .reel__write, .card-nav, .peek__arrow,
+       .back, .close, .reel__open, .peek__seg):hover {
+  color: var(--c-text);
+}
+
+/* Le toucher répond tout de suite : c'est le retour le plus important, et il
+   manquait partout sauf sur deux boutons. */
+:where(.glyph, .mode-btn, .filter, .drawer-sym, .pick, .mark, .state, .preset,
+       .query-chip, .reel__write, .card-nav, .peek__arrow, .back, .close):active {
+  transform: scale(0.94);
+}
+
+/* Désactivé : lisiblement inerte, et ça ne bouge plus. */
+:where(button):disabled {
+  opacity: 0.32;
+  cursor: default;
+}
+:where(button):disabled:active { transform: none; }
+
+/* Les cibles tactiles : notre propre règle dit 44 px, et huit contrôles sont
+   en dessous. On agrandit la zone SANS changer le dessin. */
+:where(.mode-btn, .filter, .query-chip, .glyph--sm, .peek__seg, .card-nav) {
+  position: relative;
+}
+:where(.mode-btn, .filter, .query-chip, .glyph--sm, .card-nav)::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 44px;
+  transform: translateY(-50%);
+  /* Purement une zone de touche : elle ne peint rien. */
+}
+.peek__seg::after {
+  content: "";
+  position: absolute;
+  inset: -8px 0;
+}
+
+/* Le clic sur une flèche de fiche ne doit pas ouvrir la vidéo en dessous. */
+.peek__arrow { z-index: 4; }
+
+@media (prefers-reduced-motion: reduce) {
+  :where(button, [role="button"]) { transition: none; }
+  :where(.glyph, .mode-btn, .filter, .drawer-sym, .pick, .mark, .state, .preset,
+         .query-chip, .reel__write, .card-nav, .peek__arrow, .back, .close):active {
+    transform: none;
   }
 }
