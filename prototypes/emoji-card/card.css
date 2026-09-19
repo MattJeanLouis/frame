@@ -1682,6 +1682,18 @@ img { display: block; }
 
 @keyframes peek-in { from { opacity: 0; } }
 
+/* Le contenu se pose au lieu d'apparaître : le volet monte de 6 px pendant que
+   le fond s'éclaircit. Deux courbes différentes — le fond en douceur, le
+   contenu d'un geste décidé — pour que l'œil lise « ça arrive » et non « ça a
+   clignoté ». Le `transform` est sur la plaque et non sur la couche : celle-ci
+   porte un `backdrop-filter`, et transformer un flou d'arrière-plan coûte cher. */
+.card.is-peeking .peek__plate {
+  animation: plaque-in 260ms var(--e-expo) both;
+}
+@keyframes plaque-in {
+  from { opacity: 0; transform: translateY(6px); }
+}
+
 .peek__plate {
   position: absolute;
   inset: 0;
@@ -2094,6 +2106,11 @@ img { display: block; }
 @media (prefers-reduced-motion: reduce) {
   .card { animation: none; opacity: 1; transform: none; }
   .peek__slide--in { animation: none; }
+  /* Le volet se pose sans glisser, et le survol ne grossit plus l'affiche : on
+     garde le changement de couleur, qui informe sans déplacer. */
+  .card.is-peeking .peek__plate { animation: none; }
+  .card:hover { box-shadow: var(--sh-card); }
+  .card:not(.card--hero):hover .card__img { transform: none; }
   .mark, .peek__act, .reel__act { animation: none; }
   #sous-filtres:not([hidden]), #tris { animation: none; }
   .card__img, .reel__still, .card-stage__still { transition: opacity 200ms linear; }

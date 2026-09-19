@@ -14,6 +14,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=Instrument+Sans:wght@400;500;600&family=Instrument+Serif:ital@0;1&display=swap">
 <link rel="stylesheet" href="../../styles/tokens.css">
 <link rel="stylesheet" href="card.css">
+<link rel="stylesheet" href="direction.css">
 <script src="../../config.local.js" onerror="window.FRAME_CONFIG = window.FRAME_CONFIG || {};"></script>
 </head>
 <body>
@@ -21,10 +22,10 @@
 <div id="app">
   <!-- Le seul signe de marque : un cadre, pas un mot. -->
   <header id="bar">
-    <span class="mark" aria-hidden="true"></span>
+    <a class="brand" href="./" aria-label="FRAME, accueil"><span class="brand__frame" aria-hidden="true"></span>FRAME<span class="brand__edition">CINÉMATHÈQUE PERSONNELLE</span></a>
     <div id="modes" role="tablist" aria-label="Présentation"></div>
     <button class="glyph" id="btn-mirror" type="button" aria-label="Ton miroir">
-      <img alt="" aria-hidden="true" data-emoji="🪞">
+      <span>Mon miroir</span>
     </button>
     <!-- Où tu en es dans le fil, en forme et non en chiffres. -->
     <span id="progress" aria-hidden="true"><i></i></span>
@@ -32,7 +33,7 @@
 
   <!-- Chercher et filtrer : du texte, et des pictogrammes qui se lisent d'un coup. -->
   <div id="tools">
-    <div class="search">
+    <div class="tool-line"><div class="search">
       <span class="search__icon" aria-hidden="true"></span>
       <input id="search" type="search" autocomplete="off" spellcheck="false"
              aria-label="Rechercher un film ou une série"
@@ -44,12 +45,15 @@
       </span>
     </div>
 
+    <button id="btn-refine" class="refine" type="button" aria-expanded="false" aria-controls="refinements">Filtres & tri <span id="filter-count"></span></button></div>
+
     <!-- Chaque rangée dit ce qu'elle est. Sans libellé, trois rangées de
          pastilles identiques se lisaient comme une seule bouillie. -->
     <div class="row" id="row-liste">
       <span class="row__label" aria-hidden="true">Ma liste</span>
       <div id="liste" role="group" aria-label="Ma liste"></div>
     </div>
+    <div id="refinements" hidden>
     <div class="row" id="row-filtres">
       <span class="row__label" aria-hidden="true">Genre</span>
       <div id="filters" role="group" aria-label="Filtres"></div>
@@ -63,12 +67,16 @@
       <div id="tris" role="group" aria-label="Ordre de présentation"></div>
     </div>
 
+    </div>
+
     <!-- Le moteur par emoji tombe de la barre : une seule recherche, deux écritures. -->
     <footer id="dock">
       <div id="drawers" role="tablist" aria-label="Familles de stickers"></div>
       <div id="palette" role="group" aria-label="Stickers"></div>
     </footer>
   </div>
+
+  <div class="collection-heading"><div><span class="eyebrow">LE GOÛT DU CINÉMA</span><h1 id="collection-title">À l’affiche<span>.</span></h1></div><span id="collection-note">Des histoires à découvrir. Les tiennes à garder.</span></div>
 
   <!-- Le mur : les films, nommés par leur signature. Aucun titre visible. -->
   <main id="wall" aria-label="Films"></main>

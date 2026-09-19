@@ -255,6 +255,62 @@ async function api(path, params) {
 }
 
 /* ── Films et séries : une seule matière ──────────────────────────────────── */
+/* ── Les deux vocabulaires de genres ─────────────────────────────────────── *
+   TMDB tient DEUX listes de genres. « Action » vaut 28 pour un film et 10759
+   pour une série ; « Horreur », « Musique », « Histoire », « Romance » et
+   « Thriller » n'ont aucun équivalent en série ; « Kids », « Reality » ou
+   « Talk » n'en ont aucun en film.
+
+   Envoyer un identifiant de film à `/discover/tv` ne lève pas d'erreur : ça
+   renvoie zéro résultat, en silence. Et comparer les genres d'une série à une
+   table écrite en identifiants de film ne correspond jamais. Douze genres sur
+   vingt-deux étaient donc vides d'un côté, et la dérivation du nom ne marchait
+   pas pour les séries.
+
+   On tient donc UNE table, et on traduit aux deux bords : à la requête (chaque
+   type reçoit son identifiant) et à l'entrée (chaque titre est ramené au
+   vocabulaire des films). Le reste de l'application n'a plus qu'une langue. */
+const GENRES_TMDB = {
+  28: { film: 28, serie: 10759 },      // Action
+  12: { film: 12, serie: 10759 },      // Aventure
+  16: { film: 16, serie: 16 },         // Animation
+  35: { film: 35, serie: 35 },         // Comédie
+  80: { film: 80, serie: 80 },         // Crime
+  99: { film: 99, serie: 99 },         // Documentaire
+  18: { film: 18, serie: 18 },         // Drame
+  10751: { film: 10751, serie: 10751 },// Familial
+  14: { film: 14, serie: 10765 },      // Fantastique
+  36: { film: 36, serie: null },       // Histoire — rien côté série
+  27: { film: 27, serie: null },       // Horreur — rien côté série
+  10402: { film: 10402, serie: null }, // Musique — rien côté série
+  9648: { film: 9648, serie: 9648 },   // Mystère
+  10749: { film: 10749, serie: null }, // Romance — rien côté série
+  878: { film: 878, serie: 10765 },    // Science-Fiction
+  53: { film: 53, serie: null },       // Thriller — rien côté série
+  10752: { film: 10752, serie: 10768 },// Guerre
+  37: { film: 37, serie: 37 }          // Western
+};
+
+/** L'inverse : ce qu'une série renvoie, ramené au vocabulaire des films. */
+const GENRES_SERIE_VERS_FILM = {};
+for (const [film, paire] of Object.entries(GENRES_TMDB)) {
+  if (!paire.serie) continue;
+  const cle = String(paire.serie);
+  (GENRES_SERIE_VERS_FILM[cle] = GENRES_SERIE_VERS_FILM[cle] || []).push(Number(film));
+}
+/* Les genres de série qui n'ont pas de case en face. Sans cela ils
+   disparaîtraient purement et simplement du vocabulaire commun. */
+Object.assign(GENRES_SERIE_VERS_FILM, {
+  10763: [99],        // Actualités → Documentaire
+  10764: [99],        // Téléréalité → Documentaire
+  10766: [18],        // Feuilleton → Drame
+  10767: [99]         // Talk-show → Documentaire
+});
+
+/** Un genre de série s'écrit parfois en deux genres de film (10759 = 28 + 12). */
+const genresFilms = ids => [...new Set((ids || []).flatMap(id => GENRES_SERIE_VERS_FILM[id] || [id]))];
+
+
 
 /**
  * Une série n'a pas les mêmes champs qu'un film — `name` au lieu de `title`,
@@ -268,7 +324,9 @@ function normalize(raw, kind) {
     kind,
     title: raw.title || raw.name || '',
     date: raw.release_date || raw.first_air_date || '',
-    genre_ids: raw.genre_ids || (raw.genres || []).map(g => g.id)
+    // Traduits une fois ici : partout ailleurs, films et séries parlent la
+    // même langue de genres.
+    genre_ids: genresFilms(raw.genre_ids || (raw.genres || []).map(g => g.id))
   };
 }
 
@@ -528,6 +586,28 @@ function armPlayFallback(stage, key) {
 
 /* ── Fabriques d'éléments ─────────────────────────────────────────────────── */
 
+const ICON_PATHS = {
+  grid: 'M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z',
+  play: 'M8 4l12 8-12 8z',
+  seen: 'M4 12l5 5L20 6',
+  want: 'M6 3h12v18l-6-4-6 4z',
+  love: 'M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8z',
+  search: 'M10 3a7 7 0 1 0 0 14 7 7 0 0 0 0-14 M15 15l6 6',
+  similar: 'M4 4h12v12H4z M9 20h11V9',
+  smile: 'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20 M8 9h.01 M16 9h.01 M8 14q4 5 8 0',
+  nope: 'M6 6l12 12 M18 6L6 18'
+};
+function uiIcon(name) {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('class', 'ui-icon');
+  const path = document.createElementNS(svg.namespaceURI, 'path');
+  path.setAttribute('d', ICON_PATHS[name] || ICON_PATHS.smile);
+  svg.append(path);
+  return svg;
+}
+
 function emojiImg(emoji, className = '') {
   const img = document.createElement('img');
   img.src = twemojiUrl(emoji);
@@ -604,7 +684,7 @@ function renderSkeletons(count = 8) {
   const frag = document.createDocumentFragment();
   for (let i = 0; i < count; i++) {
     const s = document.createElement('span');
-    s.className = 'card card--skeleton' + (i % 8 === 0 ? ' card--hero' : '');
+    s.className = 'card card--skeleton' + (i === 0 ? ' card--hero' : '');
     frag.append(s);
   }
   wallEl.replaceChildren(frag);
@@ -623,14 +703,14 @@ function wallLabel(film, signature, mark) {
 function wallCard(film, index) {
   const signature = signatureOf(film);
   const mark = state.marks[keyOf(film)];
-  const hero = index % 8 === 0;
+  const hero = index === 0 && !state.query && !state.liste;
 
   const card = document.createElement('button');
   card.type = 'button';
   card.className = 'card' + (hero ? ' card--hero' : '');
   card.dataset.id = keyOf(film);
   if (mark) card.dataset.mark = mark;
-  card.style.setProperty('--delay', Math.min(index, 12) * 45 + 'ms');
+  card.style.setProperty('--delay', Math.min(index, 6) * 25 + 'ms');
 
   // Le libellé accessible est posé par wallLabel : une seule source.
   card.setAttribute('aria-label', wallLabel(film, signature, mark));
@@ -643,7 +723,14 @@ function wallCard(film, index) {
     blur.setAttribute('aria-hidden', 'true');
     card.append(blur);
   }
-  card.append(posterEl(film, 'card__img'));
+  const artwork = posterEl(film, 'card__img');
+  if (hero && film.backdrop_path) {
+    artwork.src = state.client.posterUrl(film.backdrop_path, 'w1280');
+    card.classList.add('card--backdrop');
+  }
+  if (index < 6 && artwork.tagName === 'IMG') artwork.loading = 'eager';
+  if (hero) artwork.setAttribute('fetchpriority', 'high');
+  card.append(artwork);
 
   const scrim = document.createElement('span');
   scrim.className = 'card__scrim';
@@ -681,14 +768,31 @@ function wallCard(film, index) {
   sub.className = 'card__sub';
   sub.textContent = (film.kind === 'tv' ? 'Série' : 'Film') +
     (film.date ? ' · ' + film.date.slice(0, 4) : '');
+  if (hero) {
+    const kicker = document.createElement('span');
+    kicker.className = 'card__kicker';
+    kicker.textContent = state.forYou ? 'POUR TOI' : 'EN LUMIÈRE';
+    caption.append(kicker);
+  }
   caption.append(name, sub);
+  if (hero) {
+    const overview = document.createElement('span');
+    overview.className = 'card__overview';
+    overview.textContent = film.overview || 'Une nouvelle histoire à découvrir.';
+    const cta = document.createElement('span');
+    cta.className = 'card__cta';
+    cta.textContent = 'Découvrir le film';
+    if (film.kind === 'tv') cta.textContent = 'Découvrir la série';
+    caption.append(overview, cta);
+  }
   foot.append(caption);
   card.append(foot);
 
   if (mark) {
     const badge = document.createElement('span');
     badge.className = 'card__state';
-    badge.append(emojiImg(markById(mark)?.emoji || '👁️'));
+    badge.append(uiIcon(mark));
+    badge.title = markById(mark)?.label || '';
     card.append(badge);
   }
 
@@ -721,11 +825,11 @@ function refreshWallCard(film) {
     }
 
     const badge = card.querySelector('.card__state');
-    if (mark && badge) badge.replaceChildren(emojiImg(markById(mark)?.emoji || '👁️'));
+    if (mark && badge) badge.replaceChildren(uiIcon(mark));
     else if (mark) {
       const fresh = document.createElement('span');
       fresh.className = 'card__state';
-      fresh.append(emojiImg(markById(mark)?.emoji || '👁️'));
+      fresh.append(uiIcon(mark));
       card.append(fresh);
     } else if (badge) {
       badge.remove();
@@ -889,7 +993,7 @@ function renderModes() {
     button.setAttribute('role', 'tab');
     button.setAttribute('aria-selected', String(mode.id === state.mode));
     button.setAttribute('aria-label', mode.label);
-    button.append(emojiImg(mode.emoji));
+    button.append(uiIcon(mode.id === 'film' ? 'grid' : 'play'), document.createTextNode(mode.id === 'film' ? 'Explorer' : 'Moments'));
     button.addEventListener('click', () => setMode(mode.id));
     frag.append(button);
   }
@@ -919,7 +1023,15 @@ function fadeIn() {
 }
 
 /** Ce qu'on montre quand rien n'est cherché. */
+function updateCollectionHeading() {
+  const title = state.liste ? 'Ma collection' : state.forYou ? 'Pour toi' : state.query ? 'Résultats' : state.mode === 'reel' ? 'En mouvement' : 'À l’affiche';
+  el('collection-title').textContent = title + '.';
+  el('collection-note').textContent = state.query ? 'Recherche : ' + state.query : state.liste ? 'Les histoires que tu gardes.' : 'Des histoires à découvrir. Les tiennes à garder.';
+  const count = state.genres.length + state.tris.length + (state.type !== 'all' ? 1 : 0) + (state.sousGenre ? 1 : 0);
+  el('filter-count').textContent = count ? String(count) : '';
+}
 function show() {
+  updateCollectionHeading();
   /* « Ma liste » d'abord : c'est un LIEU, pas un filtre de plus. Les genres, le
      type et les tris s'appliquent ensuite, par-dessus, sans réseau. */
   if (state.liste) return showListe(state.liste === 'tout' ? null : state.liste);
@@ -1067,7 +1179,8 @@ function reelCard(item, index) {
   if (mark) {
     const badge = document.createElement('span');
     badge.className = 'reel__state';
-    badge.append(emojiImg(markById(mark)?.emoji || '👁️'));
+    badge.append(uiIcon(mark));
+    badge.title = markById(mark)?.label || '';
     stage.append(badge);
   }
 
@@ -1505,12 +1618,44 @@ const GENRES = [
   { id: 878, emoji: '🤖', label: 'Science-Fiction' },
   { id: 53, emoji: '🔪', label: 'Thriller' },
   { id: 10752, emoji: '⚔️', label: 'Guerre' },
-  { id: 37, emoji: '🤠', label: 'Western' },
-  { id: 10759, emoji: '🧨', label: 'Action et aventure' },
-  { id: 10762, emoji: '🧸', label: 'Jeunesse' },
-  { id: 10765, emoji: '🛸', label: 'SF et fantastique' },
-  { id: 10768, emoji: '🪖', label: 'Guerre et politique' }
+  { id: 37, emoji: '🤠', label: 'Western' }
 ];
+
+const GENRE_PAR_ID = new Map(GENRES.map(g => [g.id, g]));
+
+/**
+ * Les identifiants TMDB d'un type pour les genres choisis.
+ *
+ * `null` veut dire « ce type ne peut pas répondre à la demande entière » : on
+ * ne l'interroge alors pas du tout. Mieux vaut ne rien montrer que montrer à
+ * côté — une série d'action pour une recherche Action + Horreur serait un
+ * mensonge.
+ */
+function genresPourType(kind) {
+  if (!state.genres.length) return null;
+  const ids = state.genres.map(id => GENRES_TMDB[id]?.[kind]).filter(Boolean);
+  return ids.length === state.genres.length ? ids.join(',') : null;
+}
+
+/** Ce qu'on peut dire à quelqu'un devant un mur vide — sans quoi il ne se
+ *  répare pas. */
+function raisonDuVide() {
+  if (state.genres.length) {
+    const impossible = state.genres
+      .filter(id => GENRES_TMDB[id] && !GENRES_TMDB[id][state.type === 'tv' ? 'serie' : 'film'])
+      .map(id => '« ' + (GENRE_PAR_ID.get(id)?.label || id) + ' »');
+    if (impossible.length && state.type !== 'all') {
+      return 'Les ' + (state.type === 'tv' ? 'séries ne connaissent pas' : 'films ne connaissent pas') +
+        ' ' + impossible.join(' ni ') + '. Retire ce genre, ou passe à « Tout ».';
+    }
+    if (state.sousGenre) {
+      return 'Aucun titre ne porte à la fois ce genre et « ' + state.sousGenre +' ». Élargis en retirant la précision.';
+    }
+    return 'Rien avec ces genres. Retires-en un pour élargir.';
+  }
+  if (state.query.trim()) return 'Rien ne correspond à « ' + state.query.trim() + ' ».';
+  return 'Rien à montrer ici pour l’instant.';
+}
 
 /** Un filtre : pictogramme et mot, l'un ne va pas sans l'autre. */
 function filterChip(emoji, label, on, onToggle) {
@@ -1519,7 +1664,6 @@ function filterChip(emoji, label, on, onToggle) {
   button.className = 'filter';
   button.setAttribute('aria-pressed', String(on));
   button.setAttribute('aria-label', label);
-  button.append(emojiImg(emoji));
   const word = document.createElement('span');
   word.textContent = label;
   button.append(word);
@@ -1705,9 +1849,20 @@ function renderQueryChips() {
 
 /** Une frappe, un filtre : on attend un peu, puis on cherche une fois. */
 let filterTimer = 0;
-function scheduleFilter() {
+/* Deux délais, parce que ce sont deux gestes différents.
+ *
+ * Taper est une hésitation : « action » se dit en sept frappes, on ne relance
+ * donc pas une requête par lettre. Cliquer est une intention : la pastille est
+ * une cible visée, et 340 ms après le clic l'écran paraissait ne pas répondre.
+ * Mesuré : le mur changeait en 350 ms, dont 340 d'anti-rebond. Il change
+ * maintenant en 120 ms — assez court pour paraître immédiat, assez long pour
+ * qu'une rafale de clics ne lance pas six requêtes. */
+const DELAI_FRAPPE = 340;
+const DELAI_CLIC = 120;
+
+function scheduleFilter(delai = DELAI_CLIC) {
   clearTimeout(filterTimer);
-  filterTimer = setTimeout(show, 340);
+  filterTimer = setTimeout(show, delai);
 }
 
 const filtresActifs = () =>
@@ -1732,13 +1887,17 @@ async function runSearch(page = 1, { append = false } = {}) {
         .map(r => normalize(r, r.media_type));
     } else {
       const motCle = state.sousGenre ? await motCleId(state.sousGenre) : null;
-      const kinds = state.type === 'all' ? ['movie', 'tv'] : [state.type];
+      /* Un type qui ne sait pas dire toute la demande n'est pas interrogé :
+         `/discover/tv` avec un identifiant de film ne renvoie pas d'erreur, il
+         renvoie zéro — c'est ce qui vidait la moitié de chaque catégorie. */
+      const kinds = (state.type === 'all' ? ['movie', 'tv'] : [state.type])
+        .filter(kind => !state.genres.length || genresPourType(kind === 'tv' ? 'serie' : 'film'));
       const paquets = await Promise.all(kinds.map(kind => api('/discover/' + kind, {
         sort_by: triServeur(kind) || 'popularity.desc',
         // Un tri par note sans plancher de votes remonte des films à trois
         // voix : le plancher monte avec le tri.
         'vote_count.gte': state.tris[0] === 'note' ? 1000 : 100,
-        with_genres: state.genres.join(','),
+        with_genres: genresPourType(kind === 'tv' ? 'serie' : 'film') || undefined,
         with_keywords: motCle || undefined,
         page
       }).catch(() => ({ results: [] }))));
@@ -1751,6 +1910,8 @@ async function runSearch(page = 1, { append = false } = {}) {
 
   if (state.type !== 'all') trouves = trouves.filter(f => f.kind === state.type);
   if (state.genres.length) {
+    // Les genres sont ramenés au vocabulaire des films dès `normalize` : une
+    // seule comparaison vaut pour les deux types.
     trouves = trouves.filter(f => (f.genre_ids || []).some(g => state.genres.includes(g)));
   }
 
@@ -1766,7 +1927,13 @@ async function runSearch(page = 1, { append = false } = {}) {
     } else {
       state.wall = trouves;
       state.scroll.film = { top: 0, left: 0 };
-      renderWall();
+      if (trouves.length) renderWall();
+      else {
+        const vide = document.createElement('p');
+        vide.className = 'wall-vide';
+        vide.textContent = raisonDuVide();
+        wallEl.replaceChildren(vide);
+      }
     }
     state.page = page;
     state.more = trouves.length > 0 && page < 500;
@@ -2142,7 +2309,7 @@ function buildActions(card, film, variante) {
     bouton.setAttribute('aria-label', label);
     bouton.title = label;
     if (mark) bouton.setAttribute('aria-pressed', String(state.marks[keyOf(film)] === mark));
-    bouton.append(emojiImg(emoji));
+    bouton.append(uiIcon(mark || (emoji === '🔍' ? 'search' : 'similar')));
     bouton.addEventListener('click', event => {
       event.stopPropagation();
       // L'éclat dit « c'est pris en compte » avant même que l'écran change.
@@ -2206,6 +2373,11 @@ function buildDeck(card, film) {
   return deck;
 }
 
+/** La position du pointeur, tenue à jour globalement : l'intention de survol
+ *  se juge au mouvement, pas à un délai fixe. */
+const pointeur = { x: -1, y: -1 };
+addEventListener('pointermove', e => { pointeur.x = e.clientX; pointeur.y = e.clientY; }, { passive: true });
+
 /** Le survol n'existe qu'à la souris ; au doigt, c'est la fiche qui s'ouvre. */
 function bindPeek(card, film) {
   if (!canHover()) return;
@@ -2224,10 +2396,36 @@ function bindPeek(card, film) {
     fermeture = setTimeout(fermer, 420);
   };
 
-  card.addEventListener('pointerenter', () => {
+  card.addEventListener('pointerenter', event => {
     clearTimeout(peekTimer);
-    // Un délai : on ne déploie pas une fiche en traversant la grille.
-    peekTimer = setTimeout(async () => {
+
+    /* Intention de survol, et non simple délai.
+     *
+     * 240 ms étaient nécessaires pour ne pas déployer une fiche en traversant la
+     * grille — mais une fois arrêté sur une carte, ces 240 ms se subissaient.
+     *
+     * On juge donc le GESTE : si le pointeur a bougé de plus de 12 px depuis le
+     * dernier examen, c'était un passage. Mais on ne renonce pas pour autant —
+     * on RÉESSAIE. Sans cela, entrer sur le bord d'une affiche et glisser vers
+     * le centre (ce que fait tout le monde) n'aurait jamais rien ouvert : le
+     * pointeur n'entre qu'une fois par carte. La boucle s'arrête d'elle-même
+     * dès que le geste se pose, et `pointerleave` l'emporte de toute façon. */
+    /* Le point de départ est celui de l'ENTRÉE sur la carte : arriver dessus
+       est un mouvement, et il ne doit pas compter comme un passage. */
+    let dernier = { x: event.clientX, y: event.clientY };
+    let essais = 0;
+
+    const deployer = async () => {
+      // Le pointeur est parti : la boucle n'a plus rien à déployer.
+      if (!card.matches(':hover')) return;
+
+      const bouge = dernier.x >= 0 && pointeur.x >= 0 &&
+        Math.hypot(pointeur.x - dernier.x, pointeur.y - dernier.y) > 12;
+      dernier = { x: pointeur.x, y: pointeur.y };
+      if (bouge && essais++ < 10) {
+        peekTimer = setTimeout(deployer, 110);
+        return;
+      }
       buildDeck(card, film);
       card.classList.add('is-peeking');
       showSlide(card, film, 0);
@@ -2249,7 +2447,9 @@ function bindPeek(card, film) {
           showSlide(card, film, ou >= 0 ? ou : 0);
         }
       }
-    }, 240);
+    };
+
+    peekTimer = setTimeout(deployer, 110);
   });
   card.addEventListener('pointerleave', fermerBientot);
   card.addEventListener('pointerenter', () => clearTimeout(fermeture));
@@ -2732,7 +2932,7 @@ function markChip(film, option, on, compact) {
   button.dataset.value = option.id;
   button.setAttribute('aria-pressed', String(on));
   button.setAttribute('aria-label', option.label);
-  button.append(emojiImg(option.emoji));
+  button.append(uiIcon(option.id === 'watching' ? 'play' : option.id));
   const word = document.createElement('span');
   word.textContent = option.label;
   button.append(word);
@@ -2938,11 +3138,11 @@ function refreshReels(film) {
     }
 
     const badge = card.querySelector('.reel__state');
-    if (mark && badge) badge.replaceChildren(emojiImg(markById(mark)?.emoji || '👁️'));
+    if (mark && badge) badge.replaceChildren(uiIcon(mark));
     else if (mark) {
       const fresh = document.createElement('span');
       fresh.className = 'reel__state';
-      fresh.append(emojiImg(markById(mark)?.emoji || '👁️'));
+      fresh.append(uiIcon(mark));
       card.querySelector('.reel__stage')?.append(fresh);
     } else if (badge) {
       badge.remove();
@@ -3113,10 +3313,16 @@ function announce(text) {
 
 function start() {
   loadStore();
+  el('btn-refine').addEventListener('click', () => {
+    const open = el('refinements').hidden;
+    el('refinements').hidden = !open;
+    el('btn-refine').setAttribute('aria-expanded', String(open));
+    majDebordement();
+  });
 
   const config = window.FRAME_CONFIG || {};
   state.credential = config.tmdbToken || config.tmdbKey || loadCredential();
-  state.live = detectAuth(state.credential) !== null;
+  state.live = new URLSearchParams(location.search).get('demo') !== '1' && detectAuth(state.credential) !== null;
   state.client = state.live ? createClient({ credential: state.credential }) : createDemoClient();
 
   el('btn-mirror').addEventListener('click', openMirror);
@@ -3182,7 +3388,7 @@ function start() {
   /* Le moteur par emoji et le moteur texte sont le même : les emoji choisis
      s'affichent dans la barre, à côté du texte. */
   const emojiButton = el('btn-emoji');
-  const emojiIcon = emojiImg('😀');
+  const emojiIcon = uiIcon('smile');
   emojiButton.append(emojiIcon);
 
   emojiButton.addEventListener('click', () => {
@@ -3196,7 +3402,7 @@ function start() {
     quitterLesLieux();
     state.dejaVu = new Set();
     clearButton.hidden = !state.query;
-    scheduleFilter();
+    scheduleFilter(DELAI_FRAPPE);
   });
   clearButton.addEventListener('click', () => {
     searchInput.value = '';
