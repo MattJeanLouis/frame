@@ -138,19 +138,6 @@ img { display: block; }
   align-content: start;
 }
 
-/* Mode vidéo — un film après l'autre, on s'arrête sur ce qui accroche. */
-.mode-video #wall {
-  overflow-x: auto;
-  overflow-y: hidden;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 4px 16px 14px;
-  scroll-snap-type: x mandatory;
-  scrollbar-width: none;
-}
-.mode-video #wall::-webkit-scrollbar { display: none; }
-
 /* Mode vertical — plein écran, un moment à la fois, on descend. */
 .mode-reel #wall {
   overflow-y: auto;
@@ -443,8 +430,6 @@ img { display: block; }
 }
 #app.has-picker #dock { opacity: 1; transform: none; pointer-events: auto; }
 
-
-
 #drawers {
   display: flex;
   gap: 6px;
@@ -725,7 +710,6 @@ img { display: block; }
   35% { opacity: 1; transform: scale(1.25); }
   to { opacity: 0; transform: scale(1.7) translateY(-22px); }
 }
-
 
 /* ── Les états ───────────────────────────────────────────────────────────── *
    Six états sur un seul axe : ce que tu dis d'un film, en un mot, d'une seule
@@ -1040,6 +1024,35 @@ img { display: block; }
 }
 .reel__write img { width: 24px; height: 24px; opacity: 0.75; }
 
+/* Le rail d'actions, à la verticale : les codes de TikTok. */
+.reel__rail {
+  position: absolute;
+  right: 10px;
+  bottom: 96px;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.reel__act {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  background: rgba(6, 8, 13, 0.55);
+  backdrop-filter: blur(5px);
+  cursor: pointer;
+}
+.reel__act img { width: 21px; height: 21px; opacity: 0.78; transition: opacity var(--d-fast) var(--e-out); }
+.reel__act[aria-pressed="true"] {
+  border-color: var(--c-accent);
+  background: color-mix(in oklab, var(--c-accent) 26%, rgba(6, 8, 13, 0.6));
+}
+.reel__act[aria-pressed="true"] img { opacity: 1; }
+
 /* Dans le fil vertical, le carton prend tout l'écran. */
 .mode-reel .reel--quote {
   width: 100%;
@@ -1063,17 +1076,8 @@ img { display: block; }
   background: linear-gradient(100deg, transparent 20%, rgba(242, 238, 230, 0.05) 50%, transparent 80%);
   animation: sweep 1.4s var(--e-in-out) infinite;
 }
-.mode-video .reel--skeleton { width: 84vw; max-width: 460px; }
-.mode-video .reel--skeleton .reel__stage { aspect-ratio: 16 / 9; }
 .mode-reel .reel--skeleton { width: 100%; height: 100%; }
 .mode-reel .reel--skeleton .reel__stage { position: absolute; inset: 0; }
-
-/* Mode vidéo : carte large, les réactions et l'état tiennent dessous. */
-.mode-video .reel { width: 92vw; max-width: 480px; }
-.mode-video .reel__stage { aspect-ratio: 16 / 9; }
-.mode-video .reel__react { margin-top: 10px; }
-.mode-video .reel__react .pick { width: 48px; height: 48px; }
-.mode-video .reel__react .pick img { width: 30px; height: 30px; }
 
 /* Mode vertical : plein écran, et les réactions remontent sur le bord droit
    comme une barre d'actions — sauf que les nôtres sont des emoji, pas des

@@ -36,8 +36,7 @@ const FEED_MAX = 24;
    ne change jamais ce que tu as dit d'un film. */
 const MODES = [
   { id: 'film', emoji: '🖼️', label: 'Mur d\'affiches' },
-  { id: 'video', emoji: '🎬', label: 'Vidéos, à l\'horizontale' },
-  { id: 'reel', emoji: '📱', label: 'Moment plein écran, à la verticale' }
+  { id: 'reel', emoji: '📱', label: 'Moments, à la verticale' }
 ];
 
 /* Quatre partis pris typographiques, comme les cartons d'une bande-annonce.
@@ -630,7 +629,6 @@ function appendWallCards(items) {
 /** Le bas du mur : on charge la suite, indéfiniment. */
 async function loadMore() {
   if (state.loadingMore || !state.more || !state.pageLoader) return;
-  if (state.mode !== 'film') return;
   state.loadingMore = true;
   const more = document.createElement('span');
   more.className = 'wall-more';
@@ -728,16 +726,17 @@ function show() {
   if (state.picked.length) return search();
   if (filtresActifs()) return runSearch();
   if (state.mode === 'film') return loadWall();
+  state.pageLoader = loadFeed;
   return loadFeed();
 }
 
 /** Le fil : les vraies vidéos TMDB, mises bout à bout. */
-async function loadFeed() {
-  renderFeedSkeleton();
+async function loadFeed(page = 1, { append = false } = {}) {
+  if (!append) renderFeedSkeleton();
   const films = [];
   try {
     if (state.live) {
-      films.push(...await discoverCorpus());
+      films.push(...await discoverCorpus(page));
     } else {
       const all = Object.values(DEMO_POOLS).flatMap(p => p.popular);
       films.push(...[...new Map(all.map(f => [f.id, f])).values()].map(f => normalize(f, 'movie')));
@@ -752,8 +751,16 @@ async function loadFeed() {
   const avecMoment = tout.filter(x => x.video);
   // Un film sur quatre n'a aucun moment : si la matière manque, on garde
   // l'affiche plutôt que de montrer un fil vide.
-  state.items = interleave((avecMoment.length >= 6 ? avecMoment : tout).slice(0, FEED_MAX));
-  renderFeed();
+  const items = interleave((avecMoment.length >= 6 ? avecMoment : tout).slice(0, FEED_MAX));
+  if (append) {
+    state.items.push(...items);
+    appendFeedCards(items);
+  } else {
+    state.items = items;
+    renderFeed();
+  }
+  state.page = page;
+  state.more = films.length > 0 && page < 500;
 }
 
 function renderFeedSkeleton() {
@@ -879,6 +886,11 @@ function reelCard(item, index) {
   }
   card.append(react);
 
+  /* Les mêmes actions que le survol, à la verticale : c'est la disposition de
+     TikTok — l'action à droite, ce qu'on lit à gauche — et ça évite d'avoir
+     deux vocabulaires selon le mode. */
+  if (state.mode === 'reel') card.append(buildActions(card, film, 'rail'));
+
   return card;
 }
 
@@ -908,6 +920,14 @@ const momentObserver = new IntersectionObserver(entries => {
 function observeMoments() {
   momentObserver.disconnect();
   for (const card of wallEl.querySelectorAll('.reel')) momentObserver.observe(card);
+}
+
+/** Ajoute des moments à la suite : le fil s'allonge, il ne se reconstruit pas. */
+function appendFeedCards(items) {
+  const frag = document.createDocumentFragment();
+  items.forEach((item, i) => frag.append(reelCard(item, state.items.length - items.length + i)));
+  wallEl.append(frag);
+  observeMoments();
 }
 
 function renderFeed() {
@@ -1465,9 +1485,9 @@ async function showSimilar(film) {
  * En haut de la carte : ce qu'on veut faire d'un film, d'un seul geste.
  * Vue, j'aime, ma liste — puis chercher comme ça, et les films similaires.
  */
-function buildActions(card, film) {
+function buildActions(card, film, variante) {
   const row = document.createElement('div');
-  row.className = 'peek__actions';
+  row.className = variante === 'rail' ? 'reel__rail' : 'peek__actions';
 
   const actions = [
     ['seen', '👁️', 'Vu'],
@@ -1480,7 +1500,7 @@ function buildActions(card, film) {
   for (const [mark, emoji, label] of actions) {
     const bouton = document.createElement('button');
     bouton.type = 'button';
-    bouton.className = 'peek__act';
+    bouton.className = variante === 'rail' ? 'reel__act' : 'peek__act';
     bouton.dataset.act = mark || (emoji === '🔍' ? 'search' : 'similar');
     bouton.setAttribute('aria-label', label);
     bouton.title = label;
@@ -2446,7 +2466,8 @@ function start() {
   wallEl.addEventListener('scroll', () => {
     updateProgress();
     // À 900 px du bas, on prépare la suite avant qu'on l'atteigne.
-    if (state.mode === 'film' && wallEl.scrollHeight - wallEl.scrollTop - wallEl.clientHeight < 900) {
+    // Le seuil vaut pour les deux : le mur descend, le fil vertical aussi.
+    if (wallEl.scrollHeight - wallEl.scrollTop - wallEl.clientHeight < 900) {
       loadMore();
     }
   }, { passive: true });
