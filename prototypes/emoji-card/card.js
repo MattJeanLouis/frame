@@ -3654,6 +3654,21 @@ function start() {
      à savoir du jeu. */
   initRoom({
     films: () => state.wall.filter(f => f && f.poster_path),
+    /* Chacun apporte ce qu'il veut : la recherche porte sur TOUT TMDB, pas sur
+       ce que le catalogue a sous les yeux. C'est la différence entre jouer avec
+       quarante films et jouer avec tous. */
+    chercher: async q => {
+      const data = await api('/search/multi', { query: q, include_adult: false });
+      return (data.results || [])
+        .filter(r => r.media_type === 'movie' || r.media_type === 'tv')
+        .slice(0, 8)
+        .map(r => normalize(r, r.media_type))
+        .filter(f => f.poster_path)
+        .map(f => ({
+          key: keyOf(f), id: f.id, kind: f.kind, title: f.title,
+          year: (f.date || '').slice(0, 4), poster: f.poster_path
+        }));
+    },
     annoncer: message => announce(message),
     ouvrir: () => { if (!cardEl_.hidden) closeCard(); if (!mirrorEl.hidden) closeMirror(); },
     fermer: () => el('btn-soiree')?.focus()

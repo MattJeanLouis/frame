@@ -20,8 +20,10 @@ import { extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { networkInterfaces } from 'node:os';
 import {
-  createRoom, rejoindre, partir, lancerManche, voter, reveler, conclure,
-  retourAuLobby, vuePour, empreinte, expirees, codeAleatoire, tousOntFini, DECK_DEFAUT
+  createRoom, rejoindre, partir, apporter, retirer, piocher,
+  lancerTournoi, voterDuel, resoudreDuel, avancer, duelCourant, duelPret,
+  retourAuLobby, rejouer, vuePour, empreinte, expirees, codeAleatoire,
+  PIOCHER_DEFAUT, PAUSE_DUEL_MS, DECK_MIN
 } from './rooms.js';
 
 const RACINE = resolve(fileURLToPath(new URL('..', import.meta.url)));
@@ -109,25 +111,42 @@ function envoyer(res, charge) {
 }
 
 /**
- * La manche se révèle TOUTE SEULE quand plus personne n'a rien à voter.
+ * Le duel s'enchaîne TOUT SEUL.
  *
- * Sans cela, il faudrait que l'hôte soit encore là, connecté et attentif — et
- * une partie s'arrêterait parce que le téléphone de l'hôte s'est mis en veille.
- * On laisse deux secondes avant de révéler : le temps de changer d'avis sur le
- * dernier film, pas assez pour croire que rien ne se passe.
+ * Dès que tout le monde a voté, le duel est dépouillé — sans que personne n'ait
+ * à cliquer, sinon la partie s'arrêterait parce que le téléphone de l'hôte s'est
+ * mis en veille. On laisse ensuite le résultat à l'écran quelques secondes :
+ * c'est le moment qu'on commente, il ne doit pas disparaître aussitôt.
  */
-const REVELATIONS = new Map();
-function surveillerLaFin(room) {
-  clearTimeout(REVELATIONS.get(room.code));
-  REVELATIONS.delete(room.code);
-  if (room.phase !== 'manche' || !tousOntFini(room)) return;
-  const minuteur = setTimeout(() => {
-    REVELATIONS.delete(room.code);
-    if (room.phase === 'manche' && tousOntFini(room)) { reveler(room); diffuser(room); }
-  }, 2000);
-  minuteur.unref?.();
-  REVELATIONS.set(room.code, minuteur);
+const SUITES = new Map();
+
+function surveillerDuel(room) {
+  clearTimeout(SUITES.get(room.code));
+  SUITES.delete(room.code);
+  if (room.phase !== 'duels') return;
+
+  const duel = duelCourant(room);
+  if (!duel) return;
+
+  /* Le duel est clos : on laisse lire le score, puis on enchaîne. */
+  if (duel.gagnant) {
+    const minuteur = setTimeout(() => {
+      SUITES.delete(room.code);
+      if (room.phase === 'duels') { avancer(room); diffuser(room); surveillerDuel(room); }
+    }, PAUSE_DUEL_MS);
+    minuteur.unref?.();
+    SUITES.set(room.code, minuteur);
+    return;
+  }
+
+  /* Tout le monde s'est prononcé : on dépouille, et la suite s'annonce. */
+  if (duelPret(room)) {
+    resoudreDuel(room);
+    diffuser(room);
+    surveillerDuel(room);
+  }
 }
+
 
 /** Une erreur destinée à UN seul joueur, sans toucher aux autres. */
 function prevenir(code, joueurId, message) {
@@ -204,7 +223,7 @@ async function api(req, res, url) {
     const room = createRoom(c);
     rooms.set(c, room);
     const joueur = rejoindre(room, corps.nom || 'Hôte');
-    return json(res, 200, { code: c, joueurId: joueur.id, deckDefaut: DECK_DEFAUT });
+    return json(res, 200, { code: c, joueurId: joueur.id, piocheDefaut: PIOCHER_DEFAUT });
   }
 
   if (route === 'rejoindre' && req.method === 'POST') {
@@ -218,7 +237,6 @@ async function api(req, res, url) {
       return json(res, 409, { erreur: 'Cette room est complète (8 personnes).' });
     }
     const joueur = rejoindre(room, corps.nom, { id: corps.joueurId || null });
-    surveillerLaFin(room);
     diffuser(room);
     return json(res, 200, { code: room.code, joueurId: joueur.id, phase: room.phase });
   }
@@ -252,28 +270,51 @@ async function api(req, res, url) {
       case 'partir':
         partir(room, joueur.id);
         break;
+      case 'apporter': {
+        const r = apporter(room, corps.film, joueur);
+        if (r.erreur) prevenir(room.code, joueur.id, r.erreur);
+        break;
+      }
+      case 'retirer': {
+        const r = retirer(room, corps.filmKey, joueur);
+        if (r.erreur) prevenir(room.code, joueur.id, r.erreur);
+        break;
+      }
+      case 'piocher': {
+        if (hoteSeul()) break;
+        const r = piocher(room, corps.films || [], joueur);
+        if (r.erreur) prevenir(room.code, joueur.id, r.erreur);
+        else if (!r.ajoutes) prevenir(room.code, joueur.id, 'Rien à piocher : le catalogue est vide, ou la table est pleine.');
+        break;
+      }
       case 'lancer':
         if (hoteSeul()) break;
-        if (!lancerManche(room, corps.deck, { theme: corps.theme })) {
-          prevenir(room.code, joueur.id, 'Aucun film à proposer : élargis la recherche.');
+        if (!lancerTournoi(room, { theme: corps.theme })) {
+          prevenir(room.code, joueur.id, 'Il faut au moins ' + DECK_MIN + ' films sur la table, et deux joueurs.');
         }
         break;
       case 'voter':
-        if (!voter(room, joueur.id, corps.filmKey, corps.choix)) {
+        if (!voterDuel(room, joueur.id, corps.choix)) {
           prevenir(room.code, joueur.id, 'Ce vote n’a pas pu être enregistré.');
         }
         break;
-      case 'reveler':
+      case 'depouiller':
+        /* L'hôte peut clore un duel sans attendre : il y a toujours quelqu'un
+           qui s'absente au mauvais moment. */
         if (hoteSeul()) break;
-        reveler(room);
+        if (!resoudreDuel(room)) prevenir(room.code, joueur.id, 'Aucun vote à dépouiller.');
         break;
-      case 'conclure':
+      case 'passer':
         if (hoteSeul()) break;
-        conclure(room);
+        avancer(room);
         break;
       case 'lobby':
         if (hoteSeul()) break;
         retourAuLobby(room);
+        break;
+      case 'rejouer':
+        if (hoteSeul()) break;
+        rejouer(room);
         break;
       case 'nom':
         joueur.nom = String(corps.nom || joueur.nom).trim().slice(0, 24) || joueur.nom;
@@ -283,7 +324,7 @@ async function api(req, res, url) {
         return json(res, 400, { erreur: 'Action inconnue : ' + corps.type });
     }
 
-    surveillerLaFin(room);
+    surveillerDuel(room);
     diffuser(room);
     return json(res, 200, { ok: true, phase: room.phase });
   }
@@ -343,8 +384,8 @@ const serveur = createServer(async (req, res) => {
 
 setInterval(() => {
   for (const code of expirees(rooms)) {
-    clearTimeout(REVELATIONS.get(code));
-    REVELATIONS.delete(code);
+    clearTimeout(SUITES.get(code));
+    SUITES.delete(code);
     rooms.delete(code);
     for (const abonne of abonnes.get(code) || []) {
       envoyer(abonne.res, { type: 'fermee', message: 'La room a expiré.' });

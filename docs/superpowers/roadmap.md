@@ -98,30 +98,43 @@ de pagination.
 
 ---
 
-## 4. Le mode Soirée — fait
+## 4. Le mode Soirée — les duels
 
-On crée une soirée, on donne le code, et on choisit un film ensemble.
+On compose une table de films à plusieurs, puis ils s'affrontent deux par deux.
 
 ### Le jeu
 
-1. **Le salon.** L'hôte crée la soirée et reçoit un code de six signes. Les autres
-   entrent le code, ou ouvrent le lien d'invitation. On est huit au maximum : au-delà
-   on ne s'entend plus, et le deck devient interminable.
-2. **La manche.** L'hôte propose les films — par défaut, les douze premiers du
-   catalogue **tel qu'il est filtré à cet instant**. Chacun se prononce en privé sur
-   la même liste : *Oui*, *Peut-être*, *Non*.
-3. **La révélation.** Quand plus personne n'a rien à voter, les votes se retournent
-   d'eux-mêmes, deux secondes après le dernier. On voit alors qui a dit quoi, et le
-   classement.
+1. **La table.** L'hôte crée la soirée et reçoit un code de six signes ; les autres
+   entrent le code ou ouvrent le lien. **Chacun apporte jusqu'à trois films** :
+   une recherche sur tout TMDB, pas seulement le catalogue affiché. L'hôte peut
+   aussi piocher dans ce que le catalogue a sous les yeux. Douze films au maximum,
+   quatre au minimum, deux joueurs au moins.
+2. **Les duels.** Deux affiches s'affrontent, le groupe vote sur **ces deux-là**,
+   et le résultat tombe tout de suite. On enchaîne jusqu'à ce qu'il n'en reste
+   qu'un. Le tour suivant se construit tout seul, et les exempts (quand le nombre
+   est impair) passent sans se jouer.
+3. **Le verdict.** Le film gagnant, **et de qui c'était le film** — puis le bilan :
+   combien de duels, combien se sont joués à une voix près, lequel a le plus
+   divisé, lequel a mis tout le monde d'accord, et le film le plus soutenu de la
+   soirée même s'il n'a pas gagné.
 
-**La règle qui fait le jeu : l'unanimité passe avant le score.** Un film que tout le
-monde veut voir bat un film que trois personnes adorent et qu'une refuse — on cherche
-ce qu'on regarde ensemble, pas ce qui divise.
+**La règle qui fait le jeu : le secret.** Pendant un duel, le serveur n'envoie à
+chaque joueur que son propre vote et le nombre de votants. Le détail nominatif et
+le score ne sont calculés qu'une fois le duel clos. Vérifié côté protocole : un
+joueur inconnu reçoit `votes: null` et `score: null`.
 
-**Le secret est une règle du serveur, pas une politesse de l'interface.** Pendant la
-manche, le serveur n'envoie à chaque joueur que ses propres votes, plus l'avancement
-des autres en nombre. Le classement n'est pas même calculé avant la révélation. Vérifié
-côté protocole : un joueur inconnu reçoit une liste de votes vide.
+**La règle qui évite le pire : à égalité, on ne tire pas au sort.** Le film qui a
+le plus convaincu depuis le début du tournoi l'emporte — une règle qu'on peut
+expliquer à voix haute.
+
+### Pourquoi un tournoi, et pas un vote
+
+La première version faisait voter chacun dans son coin sur douze films, et le
+classement tombait à la fin. C'était un sondage, pas un jeu : personne ne vivait
+rien ensemble, et il fallait se prononcer douze fois sur des films qu'on n'avait
+pas choisis. Un duel se joue à deux affiches, se commente à voix haute, et se
+tranche en un geste. C'est aussi ce qui rend le secret intéressant : on découvre
+en direct que le film qu'on croyait évident était celui que son voisin détestait.
 
 ### Comment ça tourne
 
@@ -129,43 +142,47 @@ côté protocole : un joueur inconnu reçoit une liste de votes vide.
 npm run room            # port 8092, l'adresse réseau s'affiche
 ```
 
-L'hôte lance le serveur ; les autres ouvrent l'adresse affichée sur leur téléphone, sur
-le même Wi-Fi. **Rien ne sort de la maison** : pas de compte, pas de service tiers, pas
-d'autre clé que TMDB. Le serveur est en Node natif, sans une seule dépendance.
+L'hôte lance le serveur ; les autres ouvrent l'adresse affichée sur leur téléphone,
+sur le même Wi-Fi. **Rien ne sort de la maison** : pas de compte, pas de service
+tiers, pas d'autre clé que TMDB. Le serveur est en Node natif, sans une seule
+dépendance.
 
 Le CORS est **ouvert délibérément** : sans lui, une page servie par `npm run serve`
-(8090) ne pourrait pas parler au serveur de soirée (8092) — deux ports, deux origines —
-et il faudrait choisir entre le direct sur le catalogue et la soirée. Le serveur n'est
-joignable que sur le réseau local, et le seul secret est le code de la room ; ce que
-l'ouverture ajoute est borné par un plafond de 200 rooms.
+(8090) ne pourrait pas parler au serveur de soirée (8092) — deux ports, deux
+origines. Le serveur n'est joignable que sur le réseau local, et le seul secret
+est le code de la soirée ; ce que l'ouverture ajoute est borné par un plafond de
+200 soirées.
 
 | Fichier | Rôle |
 |---|---|
 | `room/rooms.js` | les règles du jeu — pures, sans réseau ni horloge implicite |
 | `room/server.mjs` | HTTP + SSE + service des fichiers |
 | `prototypes/emoji-card/soiree.js` | l'interface |
-| `tests/room.test.mjs` | 33 tests sur les règles |
+| `tests/room.test.mjs` | 37 tests sur les règles |
 
 ### Ce qui est vérifié
 
-Avec **deux navigateurs distincts**, deux profils, deux stockages — pas un seul client
-déguisé : création, code faux refusé et expliqué, code trop court refusé sur place,
-arrivée d'un joueur vue en direct sans recharger, lancement de la manche, vote des deux
-côtés, révélation automatique, classement et unanimité, **secret des votes tenu**, arrivée
-en cours de partie, reconnexion sans doublon, zéro exception. Plus le téléphone
-390 × 844 : aucun débordement, aucune cible sous 44 px.
+Avec **deux navigateurs distincts**, deux profils, deux stockages : création,
+code faux refusé et expliqué, code trop court refusé sur place, arrivée vue en
+direct sans recharger, **recherche sur tout TMDB**, films portant le nom de leur
+parrain, **les deux joueurs voient le même duel**, secret du vote tenu (interface
+et protocole), **tous les duels enchaînés sans un seul clic**, verdict, bilan,
+rejouer, retour à la table, reconnexion sans doublon, zéro exception. Plus le
+téléphone 390 × 844 : les deux affiches côte à côte, aucun débordement, aucune
+cible sous 44 px.
 
 ### Ce qui reste ouvert
 
-- **Pas de relais en ligne.** Le jeu suppose le même réseau. Le client ne connaît que
-  l'adresse de base de l'API : brancher un relais plus tard ne demandera pas de réécrire
+- **Pas de relais en ligne.** Le jeu suppose le même réseau. Le client ne connaît
+  que l'adresse de base de l'API : brancher un relais ne demandera pas de réécrire
   le jeu, mais ce relais n'existe pas.
-- **Un seul jeu.** « La Sélection » est le jeu ; rien n'est prévu pour en changer.
-- **Pas de manches enchaînées automatiquement** : l'hôte relance à la main.
-- **L'hôte est un joueur comme un autre** — s'il part, la main passe au plus ancien,
-  mais personne n'est prévenu que le rôle a changé.
-- **Rien n'est conservé après la soirée.** Le résultat d'une manche ne rejoint pas le
-  catalogue, et le gagnant ne peut pas être marqué « à voir » d'un geste.
+- **Un seul jeu.** « Les Duels » est le jeu ; rien n'est prévu pour en changer.
+- **Rien n'est conservé après la soirée.** Le gagnant ne peut pas être marqué
+  « à voir » d'un geste, et le résultat ne rejoint pas le catalogue.
+- **L'hôte est un joueur comme un autre** — s'il part, la main passe au plus
+  ancien, mais personne n'est prévenu que le rôle a changé.
+- **Pas de trace des partis** : le journal des départs existe dans l'état, mais le
+  bilan ne le montre pas encore.
 
 ---
 

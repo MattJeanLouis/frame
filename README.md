@@ -26,9 +26,10 @@ Deux variantes utiles :
 ## Une soirée à plusieurs
 
 Pour choisir un film à plusieurs : l'hôte lance le serveur, les autres ouvrent
-l'adresse affichée sur leur téléphone, et tout le monde vote en privé sur la même
-liste de films. Les votes se retournent d'un coup, et le film que tout le monde
-veut voir l'emporte.
+l'adresse affichée sur leur téléphone, et **chacun apporte jusqu'à trois films**
+— une recherche sur tout TMDB. Puis les films s'affrontent deux par deux : à
+chaque duel, le groupe vote sur ces deux-là, et le résultat tombe tout de suite.
+Le dernier film debout est celui qu'on regarde.
 
 ```bash
 npm run room

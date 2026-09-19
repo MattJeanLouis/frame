@@ -186,119 +186,242 @@ body.soiree-ouverte { overflow: hidden; }
 }
 .soiree__deck { margin-top: 8px; padding-top: 14px; border-top: 1px solid #f1ede41c; }
 
-/* ── La manche ────────────────────────────────────────────────────────────── */
+/* ── La table : ce que chacun apporte ─────────────────────────────────────── */
 
-.soiree__manche { display: flex; flex-direction: column; gap: 16px; }
-.soiree__progression { display: flex; align-items: center; gap: 12px; }
-.soiree__compte { font: 600 12px var(--ff-text); color: var(--c-text-dim); font-variant-numeric: tabular-nums; }
-.soiree__barre { flex: 1; height: 3px; background: #f1ede41c; border-radius: 2px; overflow: hidden; }
-.soiree__barre i { display: block; height: 100%; background: var(--c-accent); transform-origin: left center; transition: transform 260ms cubic-bezier(0.16, 1, 0.3, 1); }
+.soiree__chercheur, .soiree__table { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
+.soiree__chercheur { padding-top: 14px; border-top: 1px solid #f1ede41c; }
+.soiree__recherche {
+  min-height: 48px;
+  padding: 0 12px;
+  border: 1px solid #f1ede424;
+  border-radius: 4px;
+  background: var(--c-surface);
+  color: var(--c-text);
+  font: 15px var(--ff-text);
+}
+.soiree__recherche:focus { outline: 2px solid var(--c-accent); outline-offset: 1px; }
+.soiree__recherche:disabled { opacity: 0.5; }
 
-.soiree__carte {
+.soiree__resultats {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  gap: 10px;
+}
+.soiree__resultat {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  border-radius: 6px;
-  overflow: hidden;
-  background: var(--c-surface);
-}
-.soiree__affiche {
-  width: 100%;
-  aspect-ratio: 2 / 3;
-  object-fit: cover;
-  display: block;
-  background: var(--c-raised);
-}
-.soiree__carte .soiree__affiche { max-height: 46vh; object-position: center 20%; }
-.soiree__affiche--vide { aspect-ratio: 2 / 3; }
-.soiree__infos { padding: 0 16px 16px; display: flex; flex-direction: column; gap: 4px; }
-.soiree__nom { font: 600 20px/1.25 var(--ff-display); color: var(--c-text); }
-.soiree__nom--grand { font-size: clamp(22px, 4vw, 30px); }
-.soiree__meta { font: 11px var(--ff-text); letter-spacing: 0.1em; text-transform: uppercase; color: var(--c-text-dim); }
-
-/* Trois cibles franches : on vote au pouce, sans viser, souvent sans regarder. */
-.soiree__choix { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-.soiree__vote {
-  min-height: 60px;
+  gap: 6px;
+  padding: 0;
   border: 1px solid #f1ede424;
   border-radius: 5px;
   background: var(--c-surface);
   color: var(--c-text);
-  font: 600 14px var(--ff-text);
   cursor: pointer;
-  transition: background 140ms ease, border-color 140ms ease;
+  overflow: hidden;
+  text-align: left;
+  font: inherit;
 }
-.soiree__vote:hover { background: var(--c-raised); }
-.soiree__vote--oui.est-choisi { border-color: #6bbf7b; background: color-mix(in oklab, #6bbf7b 26%, var(--c-surface)); }
-.soiree__vote--peut.est-choisi { border-color: var(--c-accent); background: color-mix(in oklab, var(--c-accent) 24%, var(--c-surface)); }
-.soiree__vote--non.est-choisi { border-color: #e07a5f; background: color-mix(in oklab, #e07a5f 24%, var(--c-surface)); }
+.soiree__resultat:hover:not(:disabled) { border-color: var(--c-accent); }
+.soiree__resultat:disabled { opacity: 0.42; cursor: default; }
+.soiree__resultat .soiree__affiche { aspect-ratio: 2 / 3; border-radius: 0; }
+.soiree__resultat-titre { font: 500 12px/1.3 var(--ff-text); padding: 0 8px; }
+.soiree__resultat-meta { font: 10px var(--ff-text); color: var(--c-text-dim); padding: 0 8px 10px; }
 
-.soiree__nav { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.soiree__autres { display: flex; flex-wrap: wrap; gap: 6px; }
-.soiree__puce {
-  display: inline-flex; align-items: center; gap: 7px;
-  padding: 7px 11px;
-  border: 1px solid #f1ede41c;
-  border-radius: 999px;
-  font: 12px var(--ff-text);
-  color: var(--c-text-dim);
-}
-.soiree__puce em { font-style: normal; font-variant-numeric: tabular-nums; opacity: 0.75; }
-.soiree__puce.est-prete { border-color: color-mix(in oklab, #6bbf7b 55%, transparent); color: var(--c-text); }
-
-/* ── La révélation ────────────────────────────────────────────────────────── */
-
-.soiree__revelation { display: flex; flex-direction: column; gap: 16px; }
-.soiree__gagnant {
+.soiree__table-tete { display: flex; align-items: center; gap: 12px; }
+.soiree__table-tete h3 { margin-right: auto; }
+.soiree__films { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.soiree__film {
   display: grid;
-  grid-template-columns: 108px 1fr;
-  gap: 16px;
-  align-items: start;
-  padding: 16px;
-  border: 1px solid color-mix(in oklab, var(--c-accent) 45%, transparent);
-  border-radius: 6px;
-  background: color-mix(in oklab, var(--c-accent) 8%, var(--c-surface));
-}
-/* Le titre, le type et la raison s'empilent : sans colonne, « Coyote vs. Acme »
-   et « FILM · 2026 » se collaient sur la même ligne. */
-.soiree__gagnant-texte { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
-.soiree__raison { font: 13px/1.5 var(--ff-text); color: var(--c-text-dim); margin: 6px 0 0; }
-
-.soiree__classement { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
-.soiree__ligne {
-  display: grid;
-  grid-template-columns: 26px 46px 1fr;
+  grid-template-columns: 44px 1fr auto;
   gap: 12px;
   align-items: center;
-  padding: 10px 4px;
+  padding: 8px 2px;
   border-bottom: 1px solid #f1ede412;
 }
-.soiree__ligne.est-gagnante { background: color-mix(in oklab, var(--c-accent) 6%, transparent); }
-.soiree__ligne .soiree__affiche { aspect-ratio: 2 / 3; border-radius: 3px; }
-.soiree__rang { font: 600 13px var(--ff-text); color: var(--c-text-dim); font-variant-numeric: tabular-nums; }
-.soiree__ligne-texte { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-.soiree__ligne-texte strong { font: 500 14px var(--ff-text); color: var(--c-text); }
-.soiree__voix { display: flex; flex-wrap: wrap; gap: 6px; }
-.soiree__voix-item { display: inline-flex; align-items: center; gap: 5px; font: 11.5px var(--ff-text); color: var(--c-text-dim); }
-.soiree__voix-item i { font-style: normal; font-weight: 700; }
-.soiree__voix--oui i { color: #6bbf7b; }
-.soiree__voix--peut i { color: var(--c-accent); }
-.soiree__voix--non i { color: #e07a5f; }
+.soiree__film .soiree__affiche { aspect-ratio: 2 / 3; border-radius: 3px; }
+.soiree__film-texte { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.soiree__film-texte strong { font: 500 14px var(--ff-text); }
+.soiree__retirer {
+  width: 44px; height: 44px;
+  border: 0; border-radius: 4px;
+  background: transparent;
+  color: var(--c-text-dim);
+  cursor: pointer;
+  font-size: 14px;
+}
+.soiree__retirer:hover { color: #e07a5f; background: var(--c-raised); }
+.soiree__qui { margin-right: 4px; }
+.soiree__apports { font-style: normal; font-size: 11px; color: var(--c-text-dim); margin-left: auto; }
 
-.soiree__pied { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; margin-top: 8px; }
+/* ── Le duel ──────────────────────────────────────────────────────────────── */
+
+.soiree__duels { display: flex; flex-direction: column; gap: 16px; }
+.soiree__progression { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+
+.soiree__arene {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 12px;
+  align-items: stretch;
+}
+.soiree__vs {
+  align-self: center;
+  font: 500 13px var(--ff-text);
+  color: var(--c-text-dim);
+  text-transform: lowercase;
+}
+.soiree__camp {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 6px;
+  background: var(--c-surface);
+  color: var(--c-text);
+  cursor: pointer;
+  overflow: hidden;
+  text-align: left;
+  font: inherit;
+  transition: border-color 140ms ease, opacity 200ms ease;
+}
+.soiree__camp:hover:not(:disabled) { border-color: color-mix(in oklab, var(--c-accent) 60%, transparent); }
+.soiree__camp:disabled { cursor: default; }
+.soiree__camp.est-choisi { border-color: var(--c-accent); }
+.soiree__camp.est-gagnant { border-color: #6bbf7b; }
+.soiree__camp.est-perdu { opacity: 0.42; }
+.soiree__camp .soiree__affiche { aspect-ratio: 2 / 3; border-radius: 0; background: var(--c-raised); }
+.soiree__camp-texte { display: flex; flex-direction: column; gap: 4px; padding: 12px; }
+.soiree__camp-texte strong { font: 600 15px/1.25 var(--ff-display); }
+.soiree__parrain { font: 11.5px var(--ff-text); color: var(--c-text-dim); }
+.soiree__monvote, .soiree__score {
+  position: absolute;
+  top: 10px;
+  font: 700 12px var(--ff-text);
+  padding: 5px 9px;
+  border-radius: 999px;
+}
+.soiree__monvote { left: 10px; background: var(--c-accent); color: #17130a; }
+.soiree__score { right: 10px; background: rgba(13, 16, 21, 0.88); color: var(--c-text); font-size: 14px; }
+.soiree__camp.est-gagnant .soiree__score { background: #6bbf7b; color: #0d1015; }
+
+.soiree__verdict-duel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid color-mix(in oklab, #6bbf7b 40%, transparent);
+  border-radius: 6px;
+  background: color-mix(in oklab, #6bbf7b 8%, var(--c-surface));
+}
+.soiree__issue { margin: 0; font: 500 15px var(--ff-text); }
+.soiree__voix { display: flex; flex-wrap: wrap; gap: 10px; }
+.soiree__voix-item { display: inline-flex; gap: 6px; font: 12px var(--ff-text); color: var(--c-text-dim); }
+.soiree__voix-item em { font-style: normal; color: var(--c-text); }
+
+.soiree__attente { display: flex; flex-wrap: wrap; gap: 6px; }
+.soiree__outils { display: flex; gap: 12px; }
+
+/* ── Le tableau ───────────────────────────────────────────────────────────── */
+
+.soiree__tableau { font: 13px var(--ff-text); color: var(--c-text-dim); }
+.soiree__tableau summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; }
+.soiree__tableau-tour { display: flex; align-items: center; gap: 12px; padding: 7px 0; flex-wrap: wrap; }
+.soiree__tableau-duel {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid #f1ede41c;
+  border-radius: 4px;
+  font-size: 12px;
+}
+.soiree__tableau-duel em { font-style: normal; color: var(--c-text); font-variant-numeric: tabular-nums; }
+.soiree__tableau-duel .est-passe { color: var(--c-text); }
+.soiree__tableau-duel .est-sorti { opacity: 0.42; text-decoration: line-through; }
+
+/* ── Le verdict ───────────────────────────────────────────────────────────── */
+
+.soiree__faits { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.soiree__faits li {
+  display: grid;
+  grid-template-columns: 130px 1fr;
+  gap: 14px;
+  padding: 11px 2px;
+  border-bottom: 1px solid #f1ede412;
+  font: 13px/1.5 var(--ff-text);
+}
+.soiree__faits strong { font-weight: 600; color: var(--c-text); }
+.soiree__faits span { color: var(--c-text-dim); }
 
 /* ── Le téléphone ─────────────────────────────────────────────────────────── */
 
 @media (max-width: 560px) {
   .soiree { padding-bottom: 32px; gap: 16px; }
-  .soiree__carte .soiree__affiche { max-height: 38vh; }
   .soiree__gagnant { grid-template-columns: 78px 1fr; gap: 12px; padding: 12px; }
-  .soiree__ligne { grid-template-columns: 20px 40px 1fr; gap: 9px; }
-  .soiree__vote { min-height: 56px; font-size: 13px; }
+  /* Les deux affiches restent côte à côte : c'est un duel, on doit les voir
+     ensemble. Elles rétrécissent, elles ne s'empilent pas. */
+  .soiree__arene { gap: 6px; }
+  .soiree__camp-texte { padding: 9px; }
+  .soiree__camp-texte strong { font-size: 13px; }
+  .soiree__parrain { font-size: 10px; }
+  .soiree__faits li { grid-template-columns: 1fr; gap: 3px; }
+  .soiree__resultats { grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); }
 }
 
 /* Le mouvement réduit ne change rien au jeu : on retire les glissements. */
 @media (prefers-reduced-motion: reduce) {
-  .soiree__barre i { transition: none; }
-  .soiree__vote { transition: none; }
+  .soiree__camp, .soiree__resultat { transition: none; }
 }
+
+/* ── Ce que la refonte du jeu a failli perdre ─────────────────────────────── *
+   Le tournoi a remplacé la manche et la révélation ; ces styles-là servaient
+   aux deux et ont été emportés avec. Le contrôle est simple et vaut d'être
+   refait à chaque fois : toute classe `soiree__*` citée dans le JS doit avoir
+   son sélecteur ici. */
+
+.soiree__compte { font: 600 12px var(--ff-text); color: var(--c-text-dim); font-variant-numeric: tabular-nums; }
+.soiree__meta { font: 11px var(--ff-text); letter-spacing: 0.08em; text-transform: uppercase; color: var(--c-text-dim); }
+.soiree__nom { font: 600 19px/1.25 var(--ff-display); color: var(--c-text); }
+.soiree__nom--grand { font-size: clamp(22px, 4vw, 30px); }
+.soiree__raison { font: 13px/1.5 var(--ff-text); color: var(--c-text-dim); margin: 6px 0 0; }
+.soiree__gagnant-texte { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+
+/* Une affiche manquante : un aplat, jamais un trou. */
+.soiree__affiche--vide {
+  background:
+    repeating-linear-gradient(135deg, #1c222b 0 10px, #171c23 10px 20px);
+}
+
+/* Le pied d'écran : les actions, empilées, jamais collées au bord. */
+.soiree__pied { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; margin-top: 10px; }
+
+/* Les pastilles d'attente : qui a voté, sans dire pour qui. */
+.soiree__puce {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 12px;
+  border: 1px solid #f1ede41c;
+  border-radius: 999px;
+  font: 12px var(--ff-text);
+  color: var(--c-text-dim);
+}
+.soiree__puce em { font-style: normal; opacity: 0.75; }
+.soiree__puce.est-prete { border-color: color-mix(in oklab, #6bbf7b 55%, transparent); color: var(--c-text); }
+.soiree__attente { display: flex; flex-wrap: wrap; gap: 6px; }
+.soiree__verdict { display: flex; flex-direction: column; gap: 16px; }
+
+/* Le bandeau du gagnant : l'affiche à gauche, le texte à droite. La règle de
+   base avait été emportée avec l'ancien écran de révélation ; il n'en restait
+   que la version téléphone, donc sur ordinateur l'affiche prenait tout. */
+.soiree__gagnant {
+  display: grid;
+  grid-template-columns: 118px 1fr;
+  gap: 18px;
+  align-items: start;
+  padding: 18px;
+  border: 1px solid color-mix(in oklab, var(--c-accent) 45%, transparent);
+  border-radius: 6px;
+  background: color-mix(in oklab, var(--c-accent) 8%, var(--c-surface));
+}
+.soiree__gagnant .soiree__affiche { aspect-ratio: 2 / 3; border-radius: 4px; }
