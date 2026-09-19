@@ -644,6 +644,13 @@ img { display: block; }
   overscroll-behavior: contain;
   margin-top: -34px;
   padding: 0 16px 20px;
+  /* Ce qui continue en bas s'éteint au lieu d'être tranché net : la barre de
+     défilement est invisible, et rien ne disait qu'il y avait une suite. */
+  --bas: 0;
+  mask-image: linear-gradient(180deg,
+    #000 0,
+    #000 calc(100% - 44px * var(--bas)),
+    transparent 100%);
 }
 
 /* Ta signature : le nom que TU donnes au film. */
@@ -1447,6 +1454,17 @@ img { display: block; }
   gap: 8px;
 }
 .row[hidden] { display: none; }
+/* Une note dans une rangée : elle dit ce que la rangée ne peut pas faire, ou ce
+   qu'une commande déclenche vraiment. Même forme partout. */
+.row__note {
+  font-family: var(--ff-text);
+  font-size: var(--fs-2xs);
+  color: color-mix(in oklab, var(--c-text-dim) 80%, transparent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .row__label {
   font-family: var(--ff-text);
   font-size: 8.5px;
@@ -2152,4 +2170,14 @@ img { display: block; }
          .query-chip, .reel__write, .card-nav, .peek__arrow, .back, .close):active {
     transform: none;
   }
+}
+
+/* Le vide de « Ma liste » : il explique au lieu de rester muet. */
+.liste-vide {
+  font-family: var(--ff-text);
+  font-size: var(--fs-2xs);
+  color: var(--c-text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }

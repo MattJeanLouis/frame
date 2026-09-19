@@ -37,6 +37,11 @@ const FEED_MAX = 24;
    voir `bestVideo`. */
 const LANGUES_VIDEO = 'fr,en,null';
 
+/* Combien de films du mur on va nommer d'un coup. Les mots-clés coûtent une
+   requête par film : on couvre les premiers écrans, l'approche du bas de page
+   déclenche la suite (`loadMore`), et un survol fait le reste. */
+const SIGNATURE_BATCH = 30;
+
 /* Trois présentations, une seule matière et une seule langue. Changer de mode
    ne change jamais ce que tu as dit d'un film. */
 const MODES = [
@@ -94,6 +99,9 @@ const state = {
   query: '',
   type: 'all',
   genres: [],
+  /* `null` = on n'est pas dans sa liste. `'tout'` = toute la liste.
+     Un état de MARKS = seulement ceux-là. */
+  liste: null,
   sousGenre: null,
   tris: [],
   dejaVu: new Set(),
@@ -106,7 +114,11 @@ const state = {
   sources: [],
   reactions: {},
   marks: {},
-  comments: {}
+  comments: {},
+  /* Ce qu'on garde des films marqués, pour pouvoir les remontrer sans réseau.
+     Une marque sans le film derrière n'est qu'un identifiant : « Ma liste »
+     aurait alors eu besoin d'une requête par film. */
+  mesFilms: {}
 };
 
 /* ── Persistance ──────────────────────────────────────────────────────────── */
@@ -119,6 +131,7 @@ function loadStore() {
     state.reactions = parsed.reactions && typeof parsed.reactions === 'object' ? parsed.reactions : {};
     state.marks = parsed.marks && typeof parsed.marks === 'object' ? parsed.marks : {};
     state.comments = parsed.comments && typeof parsed.comments === 'object' ? parsed.comments : {};
+    state.mesFilms = parsed.films && typeof parsed.films === 'object' ? parsed.films : {};
   } catch { /* sans localStorage, on perd seulement la persistance */ }
 }
 
@@ -127,9 +140,38 @@ function saveStore() {
     localStorage.setItem(STORE_KEY, JSON.stringify({
       reactions: state.reactions,
       marks: state.marks,
-      comments: state.comments
+      comments: state.comments,
+      films: state.mesFilms
     }));
   } catch { /* idem */ }
+}
+
+/**
+ * Ce qu'on garde d'un film qu'on marque.
+ *
+ * Assez pour redessiner sa carte SANS réseau : c'est ce qui rend « Ma liste »
+ * consultable tout de suite, et lisible même hors ligne — c'est un outil
+ * personnel, pas un service. Les mots-clés partent avec, sinon le film
+ * perdrait son nom en chemin.
+ */
+function rememberFilm(film) {
+  const k = keyOf(film);
+  const ancien = state.mesFilms[k];
+  state.mesFilms[k] = {
+    id: film.id,
+    kind: film.kind || 'movie',
+    title: film.title || '',
+    date: film.date || '',
+    poster_path: film.poster_path || null,
+    genre_ids: film.genre_ids || [],
+    vote_average: film.vote_average || 0,
+    vote_count: film.vote_count || 0,
+    popularity: film.popularity || 0,
+    overview: film.overview || '',
+    keywords: Array.isArray(film.keywords) && film.keywords.length ? film.keywords : ancien?.keywords,
+    // Quand il est entré dans la liste : c'est l'ordre naturel d'une liste.
+    at: ancien?.at || Date.now()
+  };
 }
 
 /* ── Dérivation de la signature (spec v2 §4) ──────────────────────────────── */
@@ -306,6 +348,16 @@ async function fetchDetail(film) {
   return film;
 }
 
+/**
+ * Les mots-clés d'une réponse TMDB.
+ *
+ * Un FILM répond `{ keywords: [...] }`, une SÉRIE répond `{ results: [...] }`.
+ * Le code ne lisait que `keywords` : toutes les séries recevaient donc une liste
+ * vide, l'étage 2 de la dérivation ne servait à rien pour elles, et elles
+ * retombaient sur leurs genres — d'où sept séries différentes nommées « Tokyo ».
+ */
+const motsClesDe = réponse => (réponse?.keywords || réponse?.results || []).map(k => k.name);
+
 /** Mots-clés et vidéos : une seule fois par film, puis gardés en mémoire. */
 async function fetchExtras(film) {
   if (film.__extra || !state.live) return;
@@ -320,13 +372,25 @@ async function fetchExtras(film) {
          utiles, et on choisit après. */
       api(base + '/videos', { include_video_language: LANGUES_VIDEO })
     ]);
-    film.keywords = (kw.keywords || []).map(k => k.name);
+    film.keywords = motsClesDe(kw);
     film.videos = (vids.results || []).filter(v => v.site === 'YouTube');
   } catch {
     film.__extra = false;   // une panne passagère ne condamne pas le film
     film.keywords = film.keywords || [];
     film.videos = film.videos || [];
   }
+}
+
+/** Les mots-clés seuls : une requête, la plus légère qui donne son nom à un film. */
+async function fetchKeywords(film) {
+  if (film.__motsCles || !state.live) return film.keywords;
+  film.__motsCles = true;
+  try {
+    film.keywords = motsClesDe(await api('/' + (film.kind || 'movie') + '/' + film.id + '/keywords'));
+  } catch {
+    film.__motsCles = false;   // on pourra réessayer
+  }
+  return film.keywords;
 }
 
 /** Le moment : une bande-annonce d'abord, sinon un teaser, sinon un extrait.
@@ -690,6 +754,7 @@ async function loadMore() {
   }
   wallEl.querySelector('.wall-more')?.remove();
   state.loadingMore = false;
+  signerLeMur();
 }
 
 function renderWall() {
@@ -703,6 +768,36 @@ function renderWall() {
   wallEl.replaceChildren(...state.wall.map((film, i) => wallCard(film, i)));
   doux(wallEl);
   restoreScroll('film');
+  signerLeMur();
+}
+
+/**
+ * Le nom d'un film se mérite — il vient de ses mots-clés TMDB.
+ *
+ * Ces mots-clés n'arrivent qu'à la demande. Sans eux, `proposed()` retombe sur
+ * les genres, et **tous les films d'un même genre portaient alors le même nom** :
+ * « Années 1980, École, Soleil » nommait sept séries différentes. Un langage qui
+ * ne distingue pas n'est pas un langage.
+ *
+ * On va donc les chercher pour ce qui est à l'écran, par petits paquets. Chaque
+ * carte prend son vrai nom dès qu'il arrive : le mur ne saute pas, il se précise.
+ */
+let signatureEnCours = false;
+async function signerLeMur() {
+  if (signatureEnCours || !state.live || state.mode !== 'film') return;
+  const àSigner = state.wall
+    .filter(f => !f.__motsCles && !(Array.isArray(f.keywords) && f.keywords.length))
+    .slice(0, SIGNATURE_BATCH);
+  if (!àSigner.length) return;
+  signatureEnCours = true;
+  try {
+    await mapLimit(àSigner, 4, async film => {
+      await fetchKeywords(film);
+      if (state.mode === 'film') refreshWallCard(film);
+    });
+  } finally {
+    signatureEnCours = false;
+  }
 }
 
 /* ── Où on en est ─────────────────────────────────────────────────────────── */
@@ -726,6 +821,16 @@ function doux(el) {
   el.animate([{ opacity: 0.4 }, { opacity: 1 }], { duration: 240, easing: 'cubic-bezier(0.25, 1, 0.5, 1)' });
 }
 
+/** La colonne de la fiche s'éteint en bas tant qu'il reste quelque chose à
+ *  voir. Sans cela, une barre de défilement invisible laissait la moitié des
+ *  commandes hors de l'écran sans le moindre signe. */
+function majFicheDefile() {
+  const corps = cardEl_.querySelector('.card-body');
+  if (!corps) return;
+  const reste = corps.scrollHeight - corps.clientHeight - corps.scrollTop;
+  corps.style.setProperty('--bas', reste > 12 ? '1' : '0');
+}
+
 function updateProgress() {
   const horizontal = state.mode === 'video';
   const max = horizontal
@@ -746,7 +851,7 @@ function updateProgress() {
  * reste.
  */
 function majDebordement() {
-  for (const id of ['filters', 'tris', 'sous-filtres']) {
+  for (const id of ['liste', 'filters', 'tris', 'sous-filtres']) {
     const rangée = el(id);
     if (!rangée || rangée.hidden) continue;
     const reste = rangée.scrollWidth - rangée.clientWidth;
@@ -800,6 +905,9 @@ function fadeIn() {
 
 /** Ce qu'on montre quand rien n'est cherché. */
 function show() {
+  /* « Ma liste » d'abord : c'est un LIEU, pas un filtre de plus. Les genres, le
+     type et les tris s'appliquent ensuite, par-dessus, sans réseau. */
+  if (state.liste) return showListe(state.liste === 'tout' ? null : state.liste);
   if (state.forYou) return renderForYou();
   if (state.picked.length) return search();
   if (filtresActifs()) return runSearch();
@@ -1224,6 +1332,17 @@ function renderTris() {
     chip.dataset.rang = String(rang);
     frag.append(chip);
   }
+
+  /* `sort_by` n'accepte qu'une valeur : seul le PREMIER tri part chez TMDB, les
+     autres s'appliquent à ce qui est déjà chargé. On le dit — sans quoi la
+     commande ne fait pas ce qu'on croit qu'elle fait. */
+  if (state.tris.length > 1) {
+    const note = document.createElement('span');
+    note.className = 'row__note';
+    note.textContent = 'Seul le premier tri interroge le serveur.';
+    frag.append(note);
+  }
+
   host.replaceChildren(frag);
   majDebordement();
 }
@@ -1414,10 +1533,25 @@ function renderSousFiltres() {
   // sur sa ligne annoncerait une rangée qui n'existe pas.
   const rangée = el('row-sous-filtres');
   const choisis = state.genres.filter(id => SOUS_GENRES[id]);
-  if (choisis.length !== 1) {
+
+  if (!choisis.length) {
     host.hidden = true;
     host.replaceChildren();
     if (rangée) rangée.hidden = true;
+    return;
+  }
+
+  /* Deux genres à la fois : on ne peut pas préciser les deux d'un coup. Avant,
+     la rangée disparaissait sans un mot — une commande qui s'évapore se lit
+     comme une panne, pas comme une règle. Elle reste, et elle dit pourquoi. */
+  if (choisis.length > 1) {
+    const note = document.createElement('span');
+    note.className = 'row__note';
+    note.textContent = 'Un seul genre à la fois pour préciser.';
+    host.replaceChildren(note);
+    host.hidden = false;
+    if (rangée) rangée.hidden = false;
+    majDebordement();
     return;
   }
 
@@ -1433,6 +1567,50 @@ function renderSousFiltres() {
   host.replaceChildren(frag);
   host.hidden = false;
   if (rangée) rangée.hidden = false;
+  majDebordement();
+}
+
+/**
+ * La rangée « Ma liste ».
+ *
+ * Toujours là, même vide : c'est la SEULE porte vers ce qu'on a marqué, et une
+ * porte qu'on ne voit pas n'existe pas. Tant qu'il n'y a rien elle explique
+ * comment la remplir, au lieu d'offrir six boutons morts.
+ */
+function renderListe() {
+  const host = el('liste');
+  if (!host) return;
+  const frag = document.createDocumentFragment();
+  const combien = Object.keys(state.marks).length;
+
+  if (!combien) {
+    const vide = document.createElement('span');
+    vide.className = 'liste-vide';
+    vide.textContent = 'Marque un film — à voir, vu, aimé — et il t’attendra ici.';
+    frag.append(vide);
+    host.replaceChildren(frag);
+    majDebordement();
+    return;
+  }
+
+  frag.append(filterChip('🎞️', 'Tout', state.liste === 'tout', () => {
+    state.liste = state.liste === 'tout' ? null : 'tout';
+    renderListe();
+    show();
+  }));
+
+  // Seulement les états qui contiennent quelque chose : une pastille qui ne
+  // mène nulle part n'est pas une contrainte, c'est un piège.
+  for (const option of MARKS) {
+    if (!maListe(option.id).length) continue;
+    frag.append(filterChip(option.emoji, option.label, state.liste === option.id, () => {
+      state.liste = state.liste === option.id ? null : option.id;
+      renderListe();
+      show();
+    }));
+  }
+
+  host.replaceChildren(frag);
   majDebordement();
 }
 
@@ -1843,6 +2021,51 @@ function searchLike(film) {
 }
 
 /** Les films similaires, d'après TMDB. */
+/**
+ * Mes films marqués, les plus récemment ajoutés d'abord.
+ *
+ * Le type, les genres et les tris s'appliquent PAR-DESSUS : « mes films
+ * d'animation, les plus récents » se demande sans quitter sa liste. Tout se
+ * passe sur ce qu'on a déjà en local — aucune requête.
+ */
+function maListe(mark) {
+  return Object.keys(state.marks)
+    .map(k => state.mesFilms[k])
+    .filter(Boolean)
+    .filter(f => !mark || state.marks[keyOf(f)] === mark)
+    .filter(f => state.type === 'all' || (f.kind || 'movie') === state.type)
+    .filter(f => !state.genres.length || state.genres.some(g => (f.genre_ids || []).includes(g)))
+    .sort((a, b) => (b.at || 0) - (a.at || 0));
+}
+
+/** Ma liste à l'écran. Un vide qui explique vaut mieux qu'un vide muet. */
+function showListe(mark) {
+  /* « Aucune marque » et « ces filtres ne laissent rien passer » sont deux vides
+     différents, et ils ne se réparent pas pareil : l'un demande de marquer un
+     film, l'autre de relâcher un filtre. On compte donc les marques telles
+     quelles, avant tout filtre. */
+  const marques = Object.keys(state.marks).length;
+  const films = trier(maListe(mark));
+  state.wall = films;
+  state.more = false;
+  state.pageLoader = null;
+  state.scroll.film = { top: 0, left: 0 };
+
+  const nom = mark ? (markById(mark)?.label || 'Ma liste') : 'Ma liste';
+
+  if (!films.length) {
+    const vide = document.createElement('p');
+    vide.className = 'wall-vide';
+    vide.textContent = marques
+      ? 'Rien dans « ' + nom + ' » avec ces filtres. Enlèves-en un pour revoir tes films.'
+      : 'Ta liste est vide pour l’instant. Marque un film — à voir, vu, aimé — et il t’attendra ici.';
+    wallEl.replaceChildren(vide);
+  } else {
+    renderWall();
+  }
+  announce(films.length + ' film' + (films.length > 1 ? 's' : '') + ' dans « ' + nom + ' ».');
+}
+
 async function showSimilar(film) {
   renderSkeletons(12);
   const items = await recommendationsOf(film);
@@ -2474,11 +2697,12 @@ function markChip(film, option, on, compact) {
   button.addEventListener('click', () => {
     const at = keyOf(film);
     if (state.marks[at] === option.id) delete state.marks[at];
-    else state.marks[at] = option.id;
+    else { state.marks[at] = option.id; rememberFilm(film); }
     saveStore();
     announce(option.label + (state.marks[at] === option.id ? ' activé.' : ' désactivé.'));
-    // Un avis peut faire naître l'espace « Pour vous » : les filtres suivent.
+    // Un avis peut faire naître « Pour vous » ET « Ma liste » : les rangées suivent.
     renderFilters();
+    renderListe();
     refresh(film);
   });
   return button;
@@ -2601,6 +2825,16 @@ function renderCardView(film) {
 
   cardEl_.replaceChildren(frag);
   cardEl_.hidden = false;
+
+  /* La colonne vient d'être remplie : on regarde s'il reste quelque chose en
+     bas, et on le regardera à chaque fois qu'on y descendra. */
+  const corps = cardEl_.querySelector('.card-body');
+  if (corps && !corps.__suit) {
+    corps.__suit = true;
+    corps.addEventListener('scroll', majFicheDefile, { passive: true });
+  }
+  majFicheDefile();
+
   back.focus();
 }
 
@@ -2704,6 +2938,7 @@ function renderComposer(film) {
 
   cardEl_.replaceChildren(frag);
   cardEl_.hidden = false;
+  majFicheDefile();
 
   const field = cardEl_.querySelector('.composer__input');
   if (field) {
@@ -2855,11 +3090,11 @@ function start() {
   /* Les bords des rangées de pastilles s'éteignent au fur et à mesure qu'on les
      fait défiler. Sur `scroll` la rangée elle-même, et sur redimensionnement :
      c'est la largeur qui décide de ce qui déborde. */
-  for (const id of ['filters', 'tris', 'sous-filtres']) {
+  for (const id of ['liste', 'filters', 'tris', 'sous-filtres']) {
     const rangée = el(id);
     if (rangée) rangée.addEventListener('scroll', majDebordement, { passive: true });
   }
-  addEventListener('resize', majDebordement, { passive: true });
+  addEventListener('resize', () => { majDebordement(); majFicheDefile(); }, { passive: true });
 
   document.addEventListener('keydown', event => {
     if (event.key === 'Escape') {
@@ -2887,6 +3122,7 @@ function start() {
   appEl.className = 'mode-' + state.mode;
 
   renderModes();
+  renderListe();
   renderFilters();
   renderSousFiltres();
   renderTris();
