@@ -30,6 +30,18 @@
     <span id="progress" aria-hidden="true"><i></i></span>
   </header>
 
+  <!-- Chercher et filtrer : du texte, et des pictogrammes qui se lisent d'un coup. -->
+  <div id="tools">
+    <div class="search">
+      <span class="search__icon" aria-hidden="true"></span>
+      <input id="search" type="search" autocomplete="off" spellcheck="false"
+             aria-label="Rechercher un film ou une série"
+             placeholder="Rechercher un film, une série…">
+      <button id="search-clear" class="glyph glyph--sm" type="button" aria-label="Effacer la recherche" hidden></button>
+    </div>
+    <div id="filters" role="group" aria-label="Filtres"></div>
+  </div>
+
   <!-- Le mur : les films, nommés par leur signature. Aucun titre visible. -->
   <main id="wall" aria-label="Films"></main>
 
@@ -47,6 +59,9 @@
     Emoji par <a href="https://github.com/jdecked/twemoji" target="_blank" rel="noopener">Twemoji</a>, CC-BY 4.0.
   </p>
 </div>
+
+<!-- Le survol : tout ce qu'on sait du film, sans l'ouvrir. -->
+<aside id="peek" class="peek" hidden aria-hidden="true"></aside>
 
 <!-- La carte-film en grand : le moment, ta signature, tes réactions, l'état. -->
 <section id="card" hidden aria-label="Fiche du film"></section>

@@ -68,6 +68,7 @@ const wallEl = el('wall');
 const cardEl_ = el('card');
 const mirrorEl = el('mirror');
 const statusEl = el('status');
+const peekEl = el('peek');
 const progressEl = el('progress');
 const progressBar = progressEl.firstElementChild;
 
@@ -87,6 +88,9 @@ const state = {
   // Où on en était dans chaque présentation : changer de mode ne doit jamais
   // faire perdre sa place.
   scroll: { film: { top: 0, left: 0 }, video: { top: 0, left: 0 }, reel: { top: 0, left: 0 } },
+  query: '',
+  type: 'all',
+  genres: [],
   reactions: {},
   marks: {},
   comments: {}
@@ -551,7 +555,8 @@ function wallCard(film, index) {
     card.append(badge);
   }
 
-  card.addEventListener('click', () => openCard(film));
+  card.addEventListener('click', () => { closePeek(); openCard(film); });
+  bindPeek(card, film);
   return card;
 }
 
@@ -671,6 +676,7 @@ function fadeIn() {
 /** Ce qu'on montre quand rien n'est cherché. */
 function show() {
   if (state.picked.length) return search();
+  if (filtresActifs()) return runSearch();
   if (state.mode === 'film') return loadWall();
   return loadFeed();
 }
@@ -944,6 +950,241 @@ async function search() {
   }
   if (dansLeFil) renderFeed();
   else renderWall();
+}
+
+/* ── Chercher et filtrer ──────────────────────────────────────────────────── */
+
+/* Le type, puis les genres. Chaque filtre a son pictogramme : le mot dit quoi,
+   l'image le fait reconnaître. Ce sont les identifiants de genres TMDB. */
+const TYPES = [
+  { id: 'all', emoji: '🌍', label: 'Tout' },
+  { id: 'movie', emoji: '🎬', label: 'Films' },
+  { id: 'tv', emoji: '📺', label: 'Séries' }
+];
+
+const GENRES = [
+  { id: 28, emoji: '🔫', label: 'Action' },
+  { id: 12, emoji: '🧭', label: 'Aventure' },
+  { id: 16, emoji: '🐉', label: 'Animation' },
+  { id: 35, emoji: '😂', label: 'Comédie' },
+  { id: 80, emoji: '🕵️', label: 'Crime' },
+  { id: 99, emoji: '🎞️', label: 'Documentaire' },
+  { id: 18, emoji: '🎭', label: 'Drame' },
+  { id: 10751, emoji: '👧', label: 'Familial' },
+  { id: 14, emoji: '🪄', label: 'Fantastique' },
+  { id: 36, emoji: '🏺', label: 'Histoire' },
+  { id: 27, emoji: '👻', label: 'Horreur' },
+  { id: 10402, emoji: '🎸', label: 'Musique' },
+  { id: 9648, emoji: '🕯️', label: 'Mystère' },
+  { id: 10749, emoji: '💍', label: 'Romance' },
+  { id: 878, emoji: '🤖', label: 'Science-Fiction' },
+  { id: 53, emoji: '🔪', label: 'Thriller' },
+  { id: 10752, emoji: '⚔️', label: 'Guerre' },
+  { id: 37, emoji: '🤠', label: 'Western' },
+  { id: 10759, emoji: '🧨', label: 'Action et aventure' },
+  { id: 10762, emoji: '🧸', label: 'Jeunesse' },
+  { id: 10765, emoji: '🛸', label: 'SF et fantastique' },
+  { id: 10768, emoji: '🪖', label: 'Guerre et politique' }
+];
+
+/** Un filtre : pictogramme et mot, l'un ne va pas sans l'autre. */
+function filterChip(emoji, label, on, onToggle) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'filter';
+  button.setAttribute('aria-pressed', String(on));
+  button.setAttribute('aria-label', label);
+  button.append(emojiImg(emoji));
+  const word = document.createElement('span');
+  word.textContent = label;
+  button.append(word);
+  button.addEventListener('click', onToggle);
+  return button;
+}
+
+function renderFilters() {
+  const frag = document.createDocumentFragment();
+
+  for (const type of TYPES) {
+    frag.append(filterChip(type.emoji, type.label, state.type === type.id, () => {
+      state.type = type.id;
+      renderFilters();
+      scheduleFilter();
+    }));
+  }
+
+  const sep = document.createElement('span');
+  sep.className = 'filter-sep';
+  frag.append(sep);
+
+  for (const genre of GENRES) {
+    const on = state.genres.includes(genre.id);
+    frag.append(filterChip(genre.emoji, genre.label, on, () => {
+      const at = state.genres.indexOf(genre.id);
+      if (at >= 0) state.genres.splice(at, 1);
+      else state.genres.push(genre.id);
+      renderFilters();
+      scheduleFilter();
+    }));
+  }
+
+  el('filters').replaceChildren(frag);
+}
+
+/** Une frappe, un filtre : on attend un peu, puis on cherche une fois. */
+let filterTimer = 0;
+function scheduleFilter() {
+  clearTimeout(filterTimer);
+  filterTimer = setTimeout(show, 340);
+}
+
+const filtresActifs = () =>
+  Boolean(state.query.trim()) || state.type !== 'all' || state.genres.length > 0;
+
+/**
+ * La recherche. TMDB ne sait pas filtrer une recherche par texte : on filtre
+ * donc nous-mêmes sur les genres que les résultats portent déjà.
+ */
+async function runSearch() {
+  renderSkeletons(12);
+  const q = state.query.trim();
+  let trouves = [];
+
+  try {
+    if (q) {
+      const data = await api('/search/multi', { query: q, include_adult: false, page: 1 });
+      trouves = (data.results || [])
+        .filter(r => r.media_type === 'movie' || r.media_type === 'tv')
+        .map(r => normalize(r, r.media_type));
+    } else {
+      const kinds = state.type === 'all' ? ['movie', 'tv'] : [state.type];
+      const paquets = await Promise.all(kinds.map(kind => api('/discover/' + kind, {
+        sort_by: 'popularity.desc',
+        'vote_count.gte': 100,
+        with_genres: state.genres.join(','),
+        page: 1
+      }).catch(() => ({ results: [] }))));
+      trouves = paquets.flatMap((paquet, i) => (paquet.results || []).map(r => normalize(r, kinds[i])));
+      trouves.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
+    }
+  } catch (error) {
+    announce('La recherche a échoué : ' + error.message);
+  }
+
+  if (state.type !== 'all') trouves = trouves.filter(f => f.kind === state.type);
+  if (state.genres.length) {
+    trouves = trouves.filter(f => (f.genre_ids || []).some(g => state.genres.includes(g)));
+  }
+
+  announce(trouves.length + (trouves.length > 1 ? ' résultats.' : ' résultat.'));
+
+  if (state.mode === 'film') {
+    state.wall = trouves;
+    state.scroll.film = { top: 0, left: 0 };
+    renderWall();
+  } else {
+    // Dans un fil, on ne garde que ce dont on peut montrer un moment.
+    const courts = trouves.slice(0, 12);
+    const videos = await mapLimit(courts, 6, film => fetchVideos(film));
+    state.items = interleave(courts.map((film, i) => ({ film, video: bestVideo(videos[i]) })));
+    state.scroll[state.mode] = { top: 0, left: 0 };
+    renderFeed();
+  }
+}
+
+/* ── Le survol : tout ce qu'on sait, sans ouvrir ─────────────────────────── */
+
+const canHover = () => matchMedia('(hover: hover) and (pointer: fine)').matches;
+let peekTimer = 0;
+let peekFilm = null;
+
+function positionPeek(card) {
+  const r = card.getBoundingClientRect();
+  const w = peekEl.offsetWidth;
+  const h = peekEl.offsetHeight;
+  let x = r.right + 12;
+  if (x + w > innerWidth - 12) x = r.left - w - 12;
+  if (x < 12) x = Math.max(12, Math.min(r.left, innerWidth - w - 12));
+  let y = r.top;
+  if (y + h > innerHeight - 12) y = Math.max(12, innerHeight - h - 12);
+  peekEl.style.left = Math.round(x) + 'px';
+  peekEl.style.top = Math.round(y) + 'px';
+}
+
+function renderPeek(card, film) {
+  const frag = document.createDocumentFragment();
+
+  const head = document.createElement('div');
+  head.className = 'peek__head';
+
+  if (film.poster_path) {
+    const poster = document.createElement('img');
+    poster.className = 'peek__poster';
+    poster.src = state.client.posterUrl(film.poster_path, 'w154');
+    poster.alt = '';
+    head.append(poster);
+  }
+
+  const side = document.createElement('div');
+  const sig = document.createElement('div');
+  sig.className = 'peek__sig';
+  for (const id of signatureOf(film)) {
+    const sticker = STICKER_BY_ID.get(id);
+    if (sticker) sig.append(emojiImg(sticker.emoji));
+  }
+  side.append(sig);
+
+  const title = document.createElement('p');
+  title.className = 'text__title';
+  title.textContent = film.title;
+  side.append(title);
+
+  head.append(side);
+  frag.append(head);
+
+  // Le même bloc que la fiche, sans le titre : il est déjà dans l'en-tête.
+  frag.append(buildTextBlock(film, { sansTitre: true }));
+
+  const marks = document.createElement('div');
+  marks.className = 'peek__marks';
+  for (const option of MARKS) {
+    marks.append(markChip(film, option, state.marks[keyOf(film)] === option.id, true));
+  }
+  frag.append(marks);
+
+  peekEl.replaceChildren(frag);
+  peekEl.hidden = false;
+  positionPeek(card);
+}
+
+async function openPeek(card, film) {
+  peekFilm = film;
+  renderPeek(card, film);
+  if (!film.__detail && state.live) {
+    await fetchDetail(film);
+    if (peekFilm === film) renderPeek(card, film);
+  }
+}
+
+function closePeek() {
+  peekFilm = null;
+  peekEl.hidden = true;
+  peekEl.replaceChildren();
+}
+
+/** Le survol n'existe qu'à la souris ; au doigt, c'est la fiche qui s'ouvre. */
+function bindPeek(card, film) {
+  if (!canHover()) return;
+  card.addEventListener('pointerenter', () => {
+    clearTimeout(peekTimer);
+    peekTimer = setTimeout(() => openPeek(card, film), 280);
+  });
+  card.addEventListener('pointerleave', () => {
+    clearTimeout(peekTimer);
+    if (peekFilm === film) closePeek();
+  });
+  card.addEventListener('focus', () => openPeek(card, film));
+  card.addEventListener('blur', () => { if (peekFilm === film) closePeek(); });
 }
 
 /* ── Le dock ──────────────────────────────────────────────────────────────── */
@@ -1288,18 +1529,9 @@ function money(value) {
   }).format(value);
 }
 
-/**
- * Le texte : comprendre le film.
- *
- * C'est ici que le texte commande. Il répond à « qu'est-ce que c'est » —
- * ce que la signature emoji ne saura jamais dire. Elle reste au-dessus, comme
- * l'affiche : elle fait envie, elle ne renseigne pas.
- */
-function buildTextBlock(film) {
-  const wrap = document.createElement('div');
-  wrap.className = 'text';
-
-  /* La ligne technique, en capitales espacées : on situe avant de lire. */
+/** La ligne technique : type, année, durée ou saisons, genres. La fiche et le
+ *  survol doivent dire exactement la même chose, donc une seule source. */
+function metaLine(film) {
   const meta = [film.kind === 'tv' ? 'Série' : 'Film'];
   if (film.date) meta.push(film.date.slice(0, 4));
   if (film.kind === 'tv') {
@@ -1309,17 +1541,33 @@ function buildTextBlock(film) {
     meta.push(film.runtime + ' min');
   }
   if (film.genres?.length) meta.push(film.genres.slice(0, 3).join(', '));
+  return meta.join(' · ');
+}
+
+/**
+ * Le texte : comprendre le film.
+ *
+ * C'est ici que le texte commande. Il répond à « qu'est-ce que c'est » —
+ * ce que la signature emoji ne saura jamais dire. Elle reste au-dessus, comme
+ * l'affiche : elle fait envie, elle ne renseigne pas.
+ */
+function buildTextBlock(film, { sansTitre = false } = {}) {
+  const wrap = document.createElement('div');
+  wrap.className = 'text';
+
 
   // Le titre d'abord : une fiche qui ne nomme pas ce qu'elle décrit est
   // inutilisable, même avec un beau résumé.
-  const title = document.createElement('h2');
-  title.className = 'text__title';
-  title.textContent = film.title;
-  wrap.append(title);
+  if (!sansTitre) {
+    const title = document.createElement('h2');
+    title.className = 'text__title';
+    title.textContent = film.title;
+    wrap.append(title);
+  }
 
   const head = document.createElement('p');
   head.className = 'text__meta';
-  head.textContent = meta.join(' · ');
+  head.textContent = metaLine(film);
   wrap.append(head);
 
   if (film.overview) {
@@ -1744,8 +1992,15 @@ function start() {
   wallEl.addEventListener('scroll', updateProgress, { passive: true });
   document.addEventListener('keydown', event => {
     if (event.key === 'Escape') {
-      if (!mirrorEl.hidden) closeMirror();
-      else if (!cardEl_.hidden) closeCard();
+      if (!peekEl.hidden) { closePeek(); return; }
+      if (!mirrorEl.hidden) { closeMirror(); return; }
+      if (!cardEl_.hidden) { closeCard(); return; }
+      if (state.query) {
+        state.query = '';
+        el('search').value = '';
+        el('search-clear').hidden = true;
+        show();
+      }
       return;
     }
     // Les flèches passent d'un film à l'autre — la télécommande viendra par là.
@@ -1760,8 +2015,31 @@ function start() {
   appEl.className = 'mode-' + state.mode;
 
   renderModes();
+  renderFilters();
   renderDrawers();
   renderPalette();
+
+  /* La recherche : une frappe, puis on cherche une fois. */
+  const searchInput = el('search');
+  const clearButton = el('search-clear');
+  const cross = document.createElement('span');
+  cross.className = 'cross';
+  clearButton.append(cross);
+
+  searchInput.addEventListener('input', () => {
+    state.query = searchInput.value;
+    clearButton.hidden = !state.query;
+    scheduleFilter();
+  });
+  clearButton.addEventListener('click', () => {
+    searchInput.value = '';
+    state.query = '';
+    clearButton.hidden = true;
+    show();
+    searchInput.focus();
+  });
+  // Le survol disparaît dès qu'on fait défiler : il n'est plus ancré à rien.
+  wallEl.addEventListener('scroll', () => { if (peekFilm) closePeek(); }, { passive: true });
   show();
 }
 

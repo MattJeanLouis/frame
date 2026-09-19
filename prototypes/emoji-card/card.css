@@ -1213,6 +1213,205 @@ img { display: block; }
   overflow: visible;
 }
 
+/* ── Chercher et filtrer ─────────────────────────────────────────────────── *
+   Du texte, et des pictogrammes. Les deux ensemble : le mot dit quoi, l'image
+   le fait reconnaître d'un coup d'œil.                                     */
+
+#tools {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
+  display: grid;
+  gap: 8px;
+  padding: 2px 16px 10px;
+}
+
+/* Le mode vertical se prend tout l'écran : ni recherche ni filtres. */
+.mode-reel #tools { display: none; }
+
+.search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: 42px;
+  padding: 0 8px 0 13px;
+  border: 1px solid var(--c-line);
+  border-radius: 999px;
+  background: var(--c-surface);
+  transition: border-color var(--d-base) var(--e-out);
+}
+.search:focus-within { border-color: var(--c-accent); }
+
+/* La loupe est une forme : un cercle et un trait, rien à écrire. */
+.search__icon {
+  position: relative;
+  flex: 0 0 auto;
+  width: 13px;
+  height: 13px;
+  border: 2px solid var(--c-text-dim);
+  border-radius: 50%;
+}
+.search__icon::after {
+  content: "";
+  position: absolute;
+  right: -5px;
+  bottom: -4px;
+  width: 6px;
+  height: 2px;
+  background: var(--c-text-dim);
+  border-radius: 2px;
+  transform: rotate(45deg);
+}
+
+#search {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--c-text);
+  font-family: var(--ff-text);
+  font-size: var(--fs-sm);
+  -webkit-appearance: none;
+}
+#search::placeholder { color: color-mix(in oklab, var(--c-text-dim) 70%, transparent); }
+#search::-webkit-search-cancel-button { display: none; }
+
+.glyph--sm { width: 30px; height: 30px; }
+.glyph--sm .cross { width: 11px; height: 11px; }
+.glyph--sm .cross::before, .glyph--sm .cross::after { height: 2px; margin-top: -1px; }
+
+/* Les filtres : une rangée qui défile, jamais cachée. */
+#filters {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+#filters::-webkit-scrollbar { display: none; }
+
+.filter {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 12px 0 8px;
+  border: 1px solid var(--c-line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--c-text-dim);
+  font-family: var(--ff-text);
+  font-size: var(--fs-2xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: border-color var(--d-fast) var(--e-out),
+              background var(--d-fast) var(--e-out),
+              color var(--d-fast) var(--e-out);
+}
+.filter img { width: 17px; height: 17px; opacity: 0.6; transition: opacity var(--d-fast) var(--e-out); }
+.filter:hover { border-color: var(--c-line-strong); color: var(--c-text); }
+.filter[aria-pressed="true"] {
+  border-color: var(--c-accent);
+  background: color-mix(in oklab, var(--c-accent) 15%, transparent);
+  color: var(--c-text);
+}
+.filter[aria-pressed="true"] img { opacity: 1; }
+
+/* Le trait qui sépare les familles de filtres. */
+.filter-sep {
+  flex: 0 0 auto;
+  align-self: center;
+  width: 1px;
+  height: 18px;
+  margin: 0 3px;
+  background: var(--c-line);
+}
+
+/* ── Le survol : tout ce qu'on sait, sans ouvrir ─────────────────────────── */
+
+#peek {
+  position: fixed;
+  z-index: 50;
+  width: 336px;
+  max-height: min(74vh, 640px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 16px;
+  border: 1px solid var(--c-line-strong);
+  border-radius: 12px;
+  background: var(--c-raised);
+  box-shadow: var(--sh-panel);
+  animation: peek-in 180ms var(--e-out);
+}
+#peek[hidden] { display: none; }
+
+@keyframes peek-in {
+  from { opacity: 0; transform: translateY(6px); }
+}
+
+.peek__head {
+  display: grid;
+  grid-template-columns: 62px minmax(0, 1fr);
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.peek__poster {
+  width: 62px;
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+  border-radius: 4px;
+  background: var(--c-surface);
+}
+.peek__sig { display: flex; flex-wrap: wrap; gap: 3px; margin-bottom: 6px; }
+.peek__sig img { width: 20px; height: 20px; }
+
+.peek .text__title { font-size: var(--fs-lg); }
+
+/* Le résumé est borné dans le survol : sans cela il pousse le casting et les
+   plateformes — ce qu'on vient chercher — sous la ligne de flottaison. */
+.peek .text__overview {
+  display: -webkit-box;
+  -webkit-line-clamp: 5;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+/* « RÉALISATION » ne se coupe pas : la colonne doit être assez large, sinon
+   l étiquette déborde sur sa valeur. */
+.peek .text__row { grid-template-columns: 104px minmax(0, 1fr); gap: 10px; }
+.peek__marks {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--c-line);
+}
+.peek .mark { height: 34px; padding: 0 9px 0 7px; font-size: var(--fs-2xs); }
+.peek .mark img { width: 16px; height: 16px; }
+
+/* ── Écrans larges ───────────────────────────────────────────────────────── *
+   Le prototype était pensé pour un téléphone ; à la souris il faut de la
+   place, sinon le survol n'a rien à révéler.                                */
+
+@media (min-width: 720px) {
+  .mode-film #wall { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+}
+
+@media (min-width: 1024px) {
+  .mode-film #wall { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  #app { max-width: 1520px; margin-inline: auto; }
+  #bar, #tools { padding-inline: 24px; }
+}
+
+@media (min-width: 1360px) {
+  .mode-film #wall { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+}
+
 /* ── Le texte : comprendre le film ───────────────────────────────────────── *
    Ici le texte commande. La signature au-dessus fait envie ; ceci renseigne.
    Hiérarchie franche : une ligne technique en capitales, un résumé qui se lit,
@@ -1252,7 +1451,7 @@ img { display: block; }
 
 .text__row {
   display: grid;
-  grid-template-columns: 84px minmax(0, 1fr);
+  grid-template-columns: 104px minmax(0, 1fr);
   gap: 12px;
   padding-top: 11px;
   border-top: 1px solid var(--c-line);

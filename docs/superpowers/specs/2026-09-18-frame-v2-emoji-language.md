@@ -381,7 +381,58 @@ modèles possibles, à décider :
 - **deux axes** : progression (à voir / en cours / vu) × avis (j'adore / ok /
   pas aimé). Plus juste, deux touches.
 
-## 16. Questions ouvertes
+## 16. Chercher, filtrer, survoler (18 septembre 2026)
+
+Trois demandes de Matt, dans la ligne du renversement : « au survol de la souris
+il faut présenter toutes ces informations et les catégories toujours, et le
+moteur de recherche et filtre aussi doit être textuel illustré ».
+
+### Chercher, en texte
+
+Un champ de recherche interroge `/search/multi` — films **et** séries — et
+retrouve un titre par son nom. Ce que le langage emoji ne savait pas faire :
+retrouver un film qu'on a en tête.
+
+**TMDB ne sait pas filtrer une recherche par texte.** Les filtres s'appliquent
+donc côté client, sur les `genre_ids` que les résultats portent déjà. Une
+recherche sans texte passe par `discover`, qui filtre côté serveur.
+
+### Filtrer, avec des pictogrammes
+
+Vingt-cinq filtres, toujours visibles, dans une rangée qui défile : le type
+(tout / films / séries) puis les genres. **Chaque filtre porte un pictogramme et
+son mot** — l'image le fait reconnaître, le mot dit ce que c'est. Aucun des deux
+ne suffit seul, et c'est exactement la leçon du renversement.
+
+### Survoler, à la souris
+
+Sur un appareil à pointeur fin (`hover: hover`), survoler une affiche ouvre un
+panneau qui montre **tout ce que la fiche montrerait** : affiche, signature,
+titre, ligne technique, résumé, réalisation, casting, production, pays, note,
+budget, recettes, plateformes — et les six états, applicables sans ouvrir.
+
+Le panneau attend 280 ms avant d'apparaître (on ne le déclenche pas en traversant
+la grille), il se replace de lui-même s'il sort de l'écran, il disparaît au
+défilement, et **le résumé y est borné à cinq lignes** — sans quoi il poussait le
+casting et les plateformes, ce qu'on vient chercher, sous la ligne de flottaison.
+
+Le survol n'existe pas au doigt : sur téléphone, c'est la fiche qui s'ouvre. Le
+panneau est donc un raccourci de bureau, pas un passage obligé.
+
+### Écrans larges
+
+Le prototype était pensé pour un téléphone. À la souris il fallait de la place,
+sinon le survol n'avait rien à révéler : trois colonnes à 720 px, quatre à
+1024 px, cinq à 1360 px, et une largeur maximale pour que le mur ne s'étire pas.
+
+### Ce que ça laisse ouvert
+
+**Le dock emoji prend 150 px sur un téléphone**, et la barre d'outils 96 px : le
+mur n'a plus que 62 % de l'écran. Depuis que le texte commande, la palette emoji
+est devenue secondaire — elle pourrait se replier derrière un bouton sur
+téléphone. Décision à prendre, pas à subir.
+
+## 17. Questions ouvertes
 
 - **Le geste « à voir ».** Un cycle à une touche suffit-il, ou faut-il un geste
   directionnel, plus proche de l'habitude du défilement ? À tester à la main.
