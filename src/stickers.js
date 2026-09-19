@@ -16,6 +16,11 @@ export const DRAWERS = [
   { id: 'world', label: 'Monde et époque' }
 ];
 
+// Aucun sticker ne porte son information par la teinte seule : un aplat de
+// couleur est illisible pour un daltonien et se lit comme une image cassée.
+// Les trois atmosphères de lumière ont donc une FORME (🚨 🌌 🔮) et non plus
+// un carré (🟥 🟦 🟪) — remplacé le 18 septembre 2026.
+
 // Mots abstraits interdits comme libellés : un sticker est toujours une chose
 // que l'on peut voir. L'abstrait doit émerger des combinaisons.
 export const FORBIDDEN_LABELS = [
@@ -184,13 +189,13 @@ export const STICKERS = [
   { id: 'fog', emoji: '🌫️', label: 'Brouillard', drawer: 'sky',
     keywords: ['fog', 'mist', 'mystery', 'isolation', 'atmospheric'], genres: [27, 9648],
     atmosphere: { tint: '#8A93A6', intensity: 0.26, light: -0.05, particles: 'fog' } },
-  { id: 'red_light', emoji: '🟥', label: 'Lumière rouge', drawer: 'sky',
+  { id: 'red_light', emoji: '🚨', label: 'Lumière rouge', drawer: 'sky',
     keywords: ['blood', 'giallo', 'nightmare', 'hell', 'obsession'], genres: [27],
     atmosphere: { tint: '#C8203A', intensity: 0.32, light: -0.05 } },
-  { id: 'blue_light', emoji: '🟦', label: 'Lumière bleue', drawer: 'sky',
+  { id: 'blue_light', emoji: '🌌', label: 'Lumière bleue', drawer: 'sky',
     keywords: ['neo-noir', 'melancholy', 'loneliness', 'cold war', 'dream'], genres: [18, 9648],
     atmosphere: { tint: '#2A6FC9', intensity: 0.32, light: -0.08 } },
-  { id: 'violet_neon', emoji: '🟪', label: 'Néon violet', drawer: 'sky',
+  { id: 'violet_neon', emoji: '🔮', label: 'Néon violet', drawer: 'sky',
     keywords: ['neon', 'cyberpunk', 'synthwave', 'nightclub', 'retrofuturism'], genres: [878],
     atmosphere: { tint: '#8B3FD9', intensity: 0.34, light: 0.05 } },
   { id: 'dusk', emoji: '🌅', label: 'Crépuscule', drawer: 'sky',

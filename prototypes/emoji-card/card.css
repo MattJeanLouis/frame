@@ -681,11 +681,49 @@ img { display: block; }
   to { opacity: 0; transform: scale(1.7) translateY(-22px); }
 }
 
+
+/* ── Les états ───────────────────────────────────────────────────────────── *
+   Six états sur un seul axe : ce que tu dis d'un film, en un mot, d'une seule
+   touche. L'emoji ET le mot — depuis que le texte commande, on ne devine plus. */
+
+.mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 42px;
+  padding: 0 14px 0 10px;
+  border: 1px solid var(--c-line);
+  border-radius: 999px;
+  background: var(--c-surface);
+  color: var(--c-text-dim);
+  font-family: var(--ff-text);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: border-color var(--d-base) var(--e-out),
+              background var(--d-base) var(--e-out),
+              color var(--d-base) var(--e-out);
+}
+.mark img { width: 20px; height: 20px; opacity: 0.6; transition: opacity var(--d-base) var(--e-out); }
+.mark[aria-pressed="true"] {
+  border-color: var(--c-accent);
+  background: color-mix(in oklab, var(--c-accent) 14%, var(--c-surface));
+  color: var(--c-text);
+}
+.mark[aria-pressed="true"] img { opacity: 1; }
+
+/* Dans le fil horizontal, la même pastille en plus petit. */
+.mark--sm { height: 36px; padding: 0 11px 0 8px; font-size: var(--fs-2xs); }
+.mark--sm img { width: 17px; height: 17px; }
+
 /* L'état reste sous le pouce : il ne défile pas avec le reste de la fiche. */
 .card-foot {
   flex: 0 0 auto;
-  display: flex;
-  gap: 12px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
   padding: 12px 16px 18px;
   background: var(--c-bg);
   box-shadow: 0 -20px 28px var(--c-bg);
@@ -999,9 +1037,10 @@ img { display: block; }
 
 /* Vu / à voir, dans le fil : on marque sans ouvrir la fiche. */
 .reel__marks {
-  display: flex;
-  gap: 8px;
-  margin-top: 8px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 9px;
 }
 .state--sm {
   width: 46px;
@@ -1182,6 +1221,16 @@ img { display: block; }
 .text {
   display: grid;
   gap: 14px;
+}
+
+.text__title {
+  margin: 0;
+  font-family: var(--ff-display);
+  font-size: var(--fs-xl);
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.012em;
+  color: var(--c-text);
 }
 
 .text__meta {

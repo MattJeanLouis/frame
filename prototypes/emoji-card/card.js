@@ -15,8 +15,19 @@ import { loadCredential } from '../../src/storage.js';
 import { selectMovies } from '../../src/engine.js';
 
 const STORE_KEY = 'frame.v2';
-const SEEN = '👁️';
-const WANT = '🎟️';
+/* Les six états, sur un seul axe : ce que tu dis d'un film, en un mot, d'une
+   seule touche. Depuis que le texte commande, ils portent enfin leur nom —
+   une pastille étiquetée n'est plus un symbole à deviner. */
+const MARKS = [
+  { id: 'want', emoji: '🎟️', label: 'À voir' },
+  { id: 'watching', emoji: '▶️', label: 'En cours' },
+  { id: 'seen', emoji: '👁️', label: 'Vu' },
+  { id: 'ok', emoji: '🙂', label: 'Ok' },
+  { id: 'love', emoji: '❤️', label: 'J\'adore' },
+  { id: 'nope', emoji: '🙁', label: 'Pas aimé' }
+];
+
+const markById = id => MARKS.find(m => m.id === id) || null;
 const SIGNATURE_MAX = 4;
 const CHOICES = 12;
 const FEED_MAX = 24;
@@ -473,7 +484,7 @@ function renderSkeletons(count = 8) {
  *  vit. C'est le même contenu pour qui ne voit pas l'écran. */
 function wallLabel(film, signature, mark) {
   const labels = signature.map(id => STICKER_BY_ID.get(id)?.label).filter(Boolean).join(', ');
-  const etat = mark === 'seen' ? 'Vu' : mark === 'want' ? 'À voir' : 'Sans état';
+  const etat = markById(mark)?.label || 'Sans état';
   const quoi = film.kind === 'tv' ? 'Série' : 'Film';
   return quoi + ' ' + film.title + (film.date ? ', ' + film.date.slice(0, 4) : '') +
     '. ' + etat + '. Signature : ' + (labels || 'aucune');
@@ -536,7 +547,7 @@ function wallCard(film, index) {
   if (mark) {
     const badge = document.createElement('span');
     badge.className = 'card__state';
-    badge.append(emojiImg(mark === 'seen' ? SEEN : WANT));
+    badge.append(emojiImg(markById(mark)?.emoji || '👁️'));
     card.append(badge);
   }
 
@@ -563,11 +574,11 @@ function refreshWallCard(film) {
     }
 
     const badge = card.querySelector('.card__state');
-    if (mark && badge) badge.replaceChildren(emojiImg(mark === 'seen' ? SEEN : WANT));
+    if (mark && badge) badge.replaceChildren(emojiImg(markById(mark)?.emoji || '👁️'));
     else if (mark) {
       const fresh = document.createElement('span');
       fresh.className = 'card__state';
-      fresh.append(emojiImg(mark === 'seen' ? SEEN : WANT));
+      fresh.append(emojiImg(markById(mark)?.emoji || '👁️'));
       card.append(fresh);
     } else if (badge) {
       badge.remove();
@@ -778,7 +789,7 @@ function reelCard(item, index) {
   if (mark) {
     const badge = document.createElement('span');
     badge.className = 'reel__state';
-    badge.append(emojiImg(mark === 'seen' ? SEEN : WANT));
+    badge.append(emojiImg(markById(mark)?.emoji || '👁️'));
     stage.append(badge);
   }
 
@@ -804,21 +815,8 @@ function reelCard(item, index) {
   if (state.mode === 'video') {
     const marks = document.createElement('div');
     marks.className = 'reel__marks';
-    for (const [value, emoji, label] of [['seen', SEEN, 'Vu'], ['want', WANT, 'À voir']]) {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'state state--sm';
-      button.dataset.value = value;
-      button.setAttribute('aria-pressed', String(mark === value));
-      button.setAttribute('aria-label', label);
-      button.append(emojiImg(emoji));
-      button.addEventListener('click', () => {
-        if (state.marks[keyOf(film)] === value) delete state.marks[keyOf(film)];
-        else state.marks[keyOf(film)] = value;
-        saveStore();
-        announce(label + (state.marks[keyOf(film)] === value ? ' activé.' : ' désactivé.'));
-        refresh(film);
-      });
+    for (const option of MARKS) {
+      const button = markChip(film, option, mark === option.id, true);
       marks.append(button);
     }
     card.append(marks);
@@ -1312,6 +1310,13 @@ function buildTextBlock(film) {
   }
   if (film.genres?.length) meta.push(film.genres.slice(0, 3).join(', '));
 
+  // Le titre d'abord : une fiche qui ne nomme pas ce qu'elle décrit est
+  // inutilisable, même avec un beau résumé.
+  const title = document.createElement('h2');
+  title.className = 'text__title';
+  title.textContent = film.title;
+  wrap.append(title);
+
   const head = document.createElement('p');
   head.className = 'text__meta';
   head.textContent = meta.join(' · ');
@@ -1382,25 +1387,38 @@ function buildCommentSlot(film) {
   return wrap;
 }
 
+/**
+ * Une pastille d'état : l'emoji ET le mot. Depuis que le texte commande, on
+ * n'a plus à deviner ce que fait un symbole.
+ */
+function markChip(film, option, on, compact) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = compact ? 'mark mark--sm' : 'mark';
+  button.dataset.value = option.id;
+  button.setAttribute('aria-pressed', String(on));
+  button.setAttribute('aria-label', option.label);
+  button.append(emojiImg(option.emoji));
+  const word = document.createElement('span');
+  word.textContent = option.label;
+  button.append(word);
+  button.addEventListener('click', () => {
+    const at = keyOf(film);
+    if (state.marks[at] === option.id) delete state.marks[at];
+    else state.marks[at] = option.id;
+    saveStore();
+    announce(option.label + (state.marks[at] === option.id ? ' activé.' : ' désactivé.'));
+    refresh(film);
+  });
+  return button;
+}
+
 /** L'état, hors du corps : toujours au même endroit, toujours sous le pouce. */
 function buildFoot(film, mark) {
   const foot = document.createElement('div');
   foot.className = 'card-foot';
-  for (const [value, emoji, label] of [['seen', SEEN, 'Vu'], ['want', WANT, 'À voir']]) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'state';
-    button.setAttribute('aria-pressed', String(mark === value));
-    button.setAttribute('aria-label', label);
-    button.append(emojiImg(emoji));
-    button.addEventListener('click', () => {
-      if (state.marks[keyOf(film)] === value) delete state.marks[keyOf(film)];
-      else state.marks[keyOf(film)] = value;
-      saveStore();
-      announce(label + (state.marks[keyOf(film)] === value ? ' activé.' : ' désactivé.'));
-      refresh(film);
-    });
-    foot.append(button);
+  for (const option of MARKS) {
+    foot.append(markChip(film, option, mark === option.id, false));
   }
   return foot;
 }
@@ -1563,11 +1581,11 @@ function refreshReels(film) {
     }
 
     const badge = card.querySelector('.reel__state');
-    if (mark && badge) badge.replaceChildren(emojiImg(mark === 'seen' ? SEEN : WANT));
+    if (mark && badge) badge.replaceChildren(emojiImg(markById(mark)?.emoji || '👁️'));
     else if (mark) {
       const fresh = document.createElement('span');
       fresh.className = 'reel__state';
-      fresh.append(emojiImg(mark === 'seen' ? SEEN : WANT));
+      fresh.append(emojiImg(markById(mark)?.emoji || '👁️'));
       card.querySelector('.reel__stage')?.append(fresh);
     } else if (badge) {
       badge.remove();
