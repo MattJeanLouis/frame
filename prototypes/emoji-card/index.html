@@ -15,6 +15,7 @@
 <link rel="stylesheet" href="../../styles/tokens.css">
 <link rel="stylesheet" href="card.css">
 <link rel="stylesheet" href="direction.css">
+<link rel="stylesheet" href="catalogue.css">
 <script src="../../config.local.js" onerror="window.FRAME_CONFIG = window.FRAME_CONFIG || {};"></script>
 </head>
 <body>
@@ -37,7 +38,7 @@
       <span class="search__icon" aria-hidden="true"></span>
       <input id="search" type="search" autocomplete="off" spellcheck="false"
              aria-label="Rechercher un film ou une série"
-             placeholder="Rechercher un film, une série…">
+             placeholder="Un titre, ou « horreur fantômes »…">
       <div id="query-chips" class="query-chips"></div>
       <span class="search__tools">
         <button id="btn-emoji" class="glyph glyph--sm" type="button" aria-label="Chercher par emoji" aria-expanded="false"></button>
@@ -53,13 +54,16 @@
       <span class="row__label" aria-hidden="true">Ma liste</span>
       <div id="liste" role="group" aria-label="Ma liste"></div>
     </div>
-    <div id="refinements" hidden>
+    <aside id="refinements" aria-label="Affiner le catalogue" hidden>
+      <div class="refinements-head"><div><span class="eyebrow">TA SÉLECTION</span><h2>Affiner.</h2></div><button type="button" id="close-refine" class="catalogue-control" aria-label="Fermer les filtres">✕</button></div>
+      <div id="collection-filters"></div>
     <div class="row" id="row-filtres">
       <span class="row__label" aria-hidden="true">Genre</span>
       <div id="filters" role="group" aria-label="Filtres"></div>
     </div>
     <div class="row" id="row-sous-filtres" hidden>
-      <span class="row__label" aria-hidden="true">Préciser</span>
+      <label class="row__label" for="topic-search">Thèmes & sous-genres</label>
+      <input id="topic-search" type="search" placeholder="Trouver un thème…" aria-label="Trouver un thème">
       <div id="sous-filtres" role="group" aria-label="Sous-catégories" hidden></div>
     </div>
     <div class="row" id="row-tris">
@@ -67,7 +71,14 @@
       <div id="tris" role="group" aria-label="Ordre de présentation"></div>
     </div>
 
-    </div>
+      <div class="discovery-fields">
+        <label>Décennie<select id="filter-decade"><option value="">Toutes les époques</option><option value="2020">Années 2020</option><option value="2010">Années 2010</option><option value="2000">Années 2000</option><option value="1990">Années 1990</option><option value="1980">Années 1980</option><option value="1970">Années 1970</option><option value="1960">Années 1960</option><option value="1950">Années 1950</option><option value="1940">Années 1940</option><option value="1930">Années 1930</option><option value="1920">Années 1920</option></select></label>
+        <label>Durée maximale<select id="filter-runtime"><option value="">Toutes les durées</option><option value="90">90 minutes</option><option value="120">2 heures</option><option value="150">2 h 30</option></select></label>
+        <label>Langue originale<select id="filter-language"><option value="">Toutes les langues</option><option value="fr">Français</option><option value="en">Anglais</option><option value="ja">Japonais</option><option value="ko">Coréen</option><option value="es">Espagnol</option><option value="it">Italien</option><option value="de">Allemand</option><option value="hi">Hindi</option><option value="zh">Chinois</option></select></label>
+        <label>Nombre de votes minimum<select id="filter-votes"><option value="0">Aucun — tout explorer</option><option value="50">50 votes</option><option value="100">100 votes</option><option value="1000">1 000 votes</option></select></label>
+      </div>
+      <div class="refinements-foot"><button type="button" id="reset-filters" class="catalogue-control">Tout effacer</button><button type="button" id="apply-filters" class="catalogue-control primary">Voir les résultats</button></div>
+    </aside>
 
     <!-- Le moteur par emoji tombe de la barre : une seule recherche, deux écritures. -->
     <footer id="dock">
@@ -76,10 +87,20 @@
     </footer>
   </div>
 
-  <div class="collection-heading"><div><span class="eyebrow">LE GOÛT DU CINÉMA</span><h1 id="collection-title">À l’affiche<span>.</span></h1></div><span id="collection-note">Des histoires à découvrir. Les tiennes à garder.</span></div>
+  <div class="collection-heading">
+    <div class="collection-context"><h1 id="collection-title">Le catalogue</h1><span id="collection-note"></span></div>
+    <div class="catalogue-options"><button type="button" id="btn-collections" class="catalogue-control" aria-expanded="false" aria-controls="collections">Collections</button>
+      <label class="density-control" for="catalogue-density">Affiches <select id="catalogue-density"><option value="comfortable">Grandes</option><option value="compact">Compactes</option></select></label>
+      <button type="button" id="btn-immersive" class="catalogue-control" aria-pressed="false">Agrandir</button>
+      <button type="button" id="btn-fullscreen" class="catalogue-control" aria-label="Activer le plein écran">⛶</button>
+    </div>
+  </div>
+  <section id="collections" aria-label="Collections à explorer" hidden></section>
+  <div id="active-filters" aria-label="Sélection active"></div>
 
   <!-- Le mur : les films, nommés par leur signature. Aucun titre visible. -->
   <main id="wall" aria-label="Films"></main>
+  <div id="search-pagination" hidden><span id="search-status" role="status"></span><button id="load-next" class="catalogue-control" type="button">Charger la suite</button></div>
 
 
   <!-- Le texte inévitable : l'attribution, et rien d'autre. -->
@@ -97,6 +118,7 @@
 <!-- Le miroir : ce que tu ajoutes, ce que tu retires. Jamais de chiffres. -->
 <section id="mirror" hidden aria-label="Ton miroir"></section>
 
+<button type="button" id="filter-backdrop" aria-label="Fermer les filtres" hidden></button>
 <div id="status" role="status" class="sr-only"></div>
 
 <script type="module" src="card.js"></script>

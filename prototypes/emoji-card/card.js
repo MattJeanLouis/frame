@@ -1,3 +1,6 @@
+import { createDiscoverySession, resolveTopicIds, parseDiscoveryQuery, fold } from './discovery.js';
+import { COLLECTIONS } from './collections.js';
+import { SOUS_GENRES } from './topics.js';
 // FRAME v2 — carte-film. Prototype jetable.
 //
 // Trois rôles pour l'emoji, trois contenants distincts (spec v2 §2) :
@@ -103,6 +106,9 @@ const state = {
      Un état de MARKS = seulement ceux-là. */
   liste: null,
   sousGenre: null,
+  collection: null,
+  saga: null,
+  decade: '', runtimeMax: '', language: '', minimumVotes: '0',
   tris: [],
   dejaVu: new Set(),
   page: 1,
@@ -237,14 +243,14 @@ function signatureOf(film) {
 
 /* ── Réseau ───────────────────────────────────────────────────────────────── */
 
-async function api(path, params) {
+async function api(path, params, { signal } = {}) {
   const url = new URL(API_BASE + path);
   url.searchParams.set('language', 'fr-FR');
   for (const [key, value] of Object.entries(params || {})) {
     if (value === undefined || value === null || value === '') continue;
     url.searchParams.set(key, String(value));
   }
-  const options = { headers: { accept: 'application/json' } };
+  const options = { headers: { accept: 'application/json' }, signal };
   const auth = detectAuth(state.credential);
   if (auth === 'bearer') options.headers.Authorization = 'Bearer ' + state.credential;
   else if (auth === 'apikey') url.searchParams.set('api_key', state.credential);
@@ -367,6 +373,8 @@ async function fetchDetail(film) {
   ]);
 
   if (detail) {
+    film.collection = detail.belongs_to_collection || null;
+    film.original_title = detail.original_title || detail.original_name || film.title;
     film.runtime = detail.runtime || (detail.episode_run_time || [])[0] || null;
     film.seasons = detail.number_of_seasons || null;
     film.episodes = detail.number_of_episodes || null;
@@ -399,6 +407,9 @@ async function fetchDetail(film) {
   }
 
   const fr = providers?.results?.FR;
+  film.providerRegions = providers?.results || {};
+  film.availability = fr || null;
+  film.providerError = !providers;
   film.providers = fr
     ? plateformesDe([...(fr.flatrate || []), ...(fr.rent || []), ...(fr.buy || [])])
     : [];
@@ -540,25 +551,39 @@ const YOUTUBE_PLAYING = 1;
  * l'état du lecteur par `postMessage` : tant qu'il ne joue pas, c'est l'image
  * fixe qui reste à l'écran, et YouTube n'apparaît jamais.
  */
+function playerCommand(frame, func, args = []) {
+  frame?.contentWindow?.postMessage(JSON.stringify({ event: 'command', func, args }), 'https://www.youtube.com');
+}
 function watchPlayer(frame) {
-  window.addEventListener('message', event => {
-    if (typeof event.data !== 'string') return;
-    if (event.source !== frame.contentWindow) return;
-    let data;
-    try { data = JSON.parse(event.data); } catch { return; }
-    if (data.event !== 'infoDelivery' || !data.info) return;
-    if (data.info.playerState === YOUTUBE_PLAYING) {
-      frame.classList.add('is-live');
-      frame.closest('.reel__stage, .card-stage')?.querySelector('.reel__play')?.remove();
-    }
-  });
-
+  if (frame.dataset.watched) return;
+  frame.dataset.watched = 'true';
   frame.addEventListener('load', () => {
-    // Le lecteur n'écoute qu'une fois ce message reçu.
-    frame.contentWindow?.postMessage(
-      JSON.stringify({ event: 'listening', id: frame.dataset.player, channel: 'widget' }), '*');
+    if (!frame.getAttribute('src')) return;
+    frame.contentWindow?.postMessage(JSON.stringify({ event: 'listening', id: frame.dataset.key || 'frame', channel: 'widget' }), 'https://www.youtube.com');
   });
 }
+window.addEventListener('message', event => {
+  if (event.origin !== 'https://www.youtube.com' || typeof event.data !== 'string') return;
+  const frame = [...document.querySelectorAll('iframe[data-watched]')].find(f => f.contentWindow === event.source);
+  if (!frame) return;
+  let data;
+  try { data = JSON.parse(event.data); } catch { return; }
+  if (data.event === 'infoDelivery' && data.info) {
+    frame.__playback = { ...frame.__playback, ...data.info };
+    updatePlaybackControls(frame);
+  }
+  if (data.event === 'onError') {
+    const status = frame.closest('.reel__stage, .card-stage')?.querySelector('.playback-status');
+    if (status) status.textContent = 'Vidéo indisponible ici. Ouvre-la sur YouTube.';
+  }
+  if (data.event === 'onReady') {
+    playerCommand(frame, frame.closest('.reel')?.dataset.sound === 'on' ? 'unMute' : 'mute');
+  }
+  if (data.event === 'infoDelivery' && data.info?.playerState === YOUTUBE_PLAYING) {
+    frame.classList.add('is-live');
+    frame.closest('.reel__stage, .card-stage')?.querySelector('.reel__play')?.remove();
+  }
+});
 
 /**
  * Si le moment ne démarre pas — mode économie d'énergie, économiseur de
@@ -684,7 +709,7 @@ function renderSkeletons(count = 8) {
   const frag = document.createDocumentFragment();
   for (let i = 0; i < count; i++) {
     const s = document.createElement('span');
-    s.className = 'card card--skeleton' + (i === 0 ? ' card--hero' : '');
+    s.className = 'card card--skeleton';
     frag.append(s);
   }
   wallEl.replaceChildren(frag);
@@ -703,10 +728,9 @@ function wallLabel(film, signature, mark) {
 function wallCard(film, index) {
   const signature = signatureOf(film);
   const mark = state.marks[keyOf(film)];
-  const hero = index === 0 && !state.query && !state.liste;
+  const hero = false; // Le catalogue garde un rythme régulier, quelle que soit la recherche.
 
-  const card = document.createElement('button');
-  card.type = 'button';
+  const card = document.createElement('article');
   card.className = 'card' + (hero ? ' card--hero' : '');
   card.dataset.id = keyOf(film);
   if (mark) card.dataset.mark = mark;
@@ -801,7 +825,12 @@ function wallCard(film, index) {
   layer.className = 'card__peek';
   card.append(layer);
 
-  card.addEventListener('click', () => openCard(film));
+  const open = document.createElement('button');
+  open.type = 'button';
+  open.className = 'card__open';
+  open.setAttribute('aria-label', 'Ouvrir ' + film.title);
+  open.addEventListener('click', () => { closeCataloguePreview(); openCard(film); });
+  card.append(open);
   bindPeek(card, film);
   return card;
 }
@@ -853,6 +882,7 @@ function appendWallCards(items) {
 
 /** Le bas du mur : on charge la suite, indéfiniment. */
 async function loadMore() {
+  if (discovery) { if (!discoveryBusy && discovery.hasMore) await runSearch(0, { append: true }); return; }
   if (state.loadingMore || !state.more || !state.pageLoader) return;
   state.loadingMore = true;
   const more = document.createElement('span');
@@ -1024,14 +1054,144 @@ function fadeIn() {
 
 /** Ce qu'on montre quand rien n'est cherché. */
 function updateCollectionHeading() {
-  const title = state.liste ? 'Ma collection' : state.forYou ? 'Pour toi' : state.query ? 'Résultats' : state.mode === 'reel' ? 'En mouvement' : 'À l’affiche';
-  el('collection-title').textContent = title + '.';
-  el('collection-note').textContent = state.query ? 'Recherche : ' + state.query : state.liste ? 'Les histoires que tu gardes.' : 'Des histoires à découvrir. Les tiennes à garder.';
-  const count = state.genres.length + state.tris.length + (state.type !== 'all' ? 1 : 0) + (state.sousGenre ? 1 : 0);
+  const title = state.liste ? 'Ma collection' : state.forYou ? 'Pour toi' : state.query ? 'Recherche'
+    : state.saga ? 'La saga' : state.mode === 'reel' ? 'En mouvement' : 'Le catalogue';
+  el('collection-title').textContent = title;
+  el('collection-note').textContent = state.query ? '« ' + state.query + ' »' : state.liste ? (markById(state.liste)?.label || 'Tous tes titres') : '';
+  const count = state.genres.length + state.tris.length + (state.type !== 'all' ? 1 : 0) + (state.sousGenre ? 1 : 0) + [state.decade, state.runtimeMax, state.language].filter(Boolean).length + (state.minimumVotes !== '0' ? 1 : 0);
   el('filter-count').textContent = count ? String(count) : '';
+  const active = el('active-filters');
+  const tags = [];
+  const tag = (label, remove) => {
+    const button = document.createElement('button');
+    button.type = 'button'; button.textContent = label + ' ×';
+    button.setAttribute('aria-label', 'Retirer le filtre ' + label);
+    button.addEventListener('click', () => {
+      remove(); state.dejaVu = new Set(); renderFilters(); renderSousFiltres(); renderTris(); renderQueryChips(); renderPalette(); show();
+    });
+    tags.push(button);
+  };
+  if (state.type !== 'all') tag(state.type === 'tv' ? 'Séries' : 'Films', () => { state.type = 'all'; });
+  for (const id of state.genres) tag(GENRE_PAR_ID.get(id)?.label || id, () => { state.genres = state.genres.filter(x => x !== id); state.sousGenre = null; });
+  if (state.sousGenre) tag(topicLabel(state.sousGenre), () => { state.sousGenre = null; });
+  for (const id of state.tris) tag(triParId(id)?.nom || id, () => { state.tris = state.tris.filter(x => x !== id); });
+  for (const id of state.picked) tag(STICKER_BY_ID.get(id)?.label || id, () => { state.picked = state.picked.filter(x => x !== id); });
+  if (state.decade) tag('Années ' + state.decade, () => { state.decade = ''; el('filter-decade').value = ''; });
+  if (state.runtimeMax) tag('Moins de ' + state.runtimeMax + ' min', () => { state.runtimeMax = ''; el('filter-runtime').value = ''; });
+  if (state.language) tag(el('filter-language').selectedOptions[0].textContent, () => { state.language = ''; el('filter-language').value = ''; });
+  if (state.minimumVotes !== '0') tag(state.minimumVotes + ' votes minimum', () => { state.minimumVotes = '0'; el('filter-votes').value = '0'; });
+  if (state.saga) tag(state.saga.name, () => { state.saga = null; });
+  active.replaceChildren(...tags);
+  active.hidden = !tags.length;
 }
+
+function setRefinements(open) {
+  closeCataloguePreview();
+  el('refinements').hidden = !open;
+  el('btn-refine').setAttribute('aria-expanded', String(open));
+  document.body.classList.toggle('filters-open', open);
+  const mobile = matchMedia('(max-width: 760px)').matches;
+  el('filter-backdrop').hidden = !open || !mobile;
+  if (mobile) {
+    for (const id of ['bar', 'wall', 'active-filters']) el(id).inert = open;
+    el('refinements').setAttribute('role', 'dialog');
+    el('refinements').setAttribute('aria-modal', String(open));
+  }
+  if (open) el('close-refine').focus();
+  else el('btn-refine').focus();
+  majDebordement();
+}
+
+function initCatalogueLayout() {
+  el('bar').insertBefore(el('tools'), el('btn-mirror'));
+  el('collection-filters').append(el('row-liste'));
+  appEl.append(el('filter-backdrop'), el('refinements'));
+  const dock = el('dock');
+  el('refinements').insertBefore(dock, el('refinements').querySelector('.refinements-foot'));
+  el('btn-emoji').hidden = true; el('dock').hidden = true;
+  const emojiToggle = el('btn-emoji');
+  emojiToggle.addEventListener('click', () => { if (el('refinements').hidden) setRefinements(true); });
+  initDiscoveryControls();
+  el('close-refine').addEventListener('click', () => setRefinements(false));
+  el('apply-filters').addEventListener('click', () => setRefinements(false));
+  el('filter-backdrop').addEventListener('click', () => setRefinements(false));
+  el('reset-filters').addEventListener('click', () => {
+    state.collection = null; state.saga = null; state.decade = ''; state.runtimeMax = ''; state.language = ''; state.minimumVotes = '0'; syncDiscoveryControls();
+    state.type = 'all'; state.genres = []; state.sousGenre = null; state.tris = []; state.picked = []; state.liste = null; state.forYou = false; state.dejaVu = new Set();
+    renderFilters(); renderSousFiltres(); renderTris(); renderListe(); renderPalette(); renderQueryChips(); show();
+  });
+  el('catalogue-density').addEventListener('change', event => { appEl.dataset.density = event.target.value; closeCataloguePreview(); });
+  const immersive = el('btn-immersive');
+  immersive.addEventListener('click', () => {
+    const on = document.body.classList.toggle('catalogue-immersive');
+    immersive.setAttribute('aria-pressed', String(on));
+    immersive.textContent = on ? 'Réduire' : 'Agrandir';
+    closeCataloguePreview();
+  });
+  el('btn-fullscreen').hidden = !document.fullscreenEnabled;
+  el('btn-fullscreen').addEventListener('click', async () => {
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else await document.documentElement.requestFullscreen();
+    } catch { announce('Le plein écran n’est pas disponible dans ce navigateur.'); }
+  });
+  document.addEventListener('fullscreenchange', () => {
+    el('btn-fullscreen').setAttribute('aria-label', document.fullscreenElement ? 'Quitter le plein écran' : 'Activer le plein écran');
+  });
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && !el('refinements').hidden) { event.preventDefault(); event.stopImmediatePropagation(); setRefinements(false); }
+    else if (event.key === 'Escape' && document.body.classList.contains('catalogue-immersive') && cardEl_.hidden && mirrorEl.hidden) { event.stopImmediatePropagation(); immersive.click(); }
+    if (event.key === 'Tab' && !el('refinements').hidden && matchMedia('(max-width:760px)').matches) {
+      const items = [...el('refinements').querySelectorAll('button, select, input')].filter(x => x.offsetParent !== null);
+      const first = items[0], last = items.at(-1);
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    }
+  }, true);
+  addEventListener('resize', () => {
+    const mobile = matchMedia('(max-width:760px)').matches;
+    const open = !el('refinements').hidden;
+    el('filter-backdrop').hidden = !mobile || !open;
+    for (const id of ['bar', 'wall', 'active-filters']) el(id).inert = mobile && open;
+    el('refinements').setAttribute('role', mobile ? 'dialog' : 'complementary');
+    el('refinements').setAttribute('aria-modal', String(mobile && open));
+  });
+}
+
+/**
+ * Une collection EST un jeu de critères — ni plus, ni moins.
+ *
+ * Tant que les critères sont les siens, elle est active ; dès qu'on en touche
+ * un, ce n'est plus elle. Le nettoyage du drapeau était recopié dans quatre
+ * gestionnaires sur sept : les tris, le type et les genres l'oubliaient, et le
+ * nom restait affiché au-dessus de résultats qui n'étaient plus les siens.
+ *
+ * On ne range donc plus un drapeau qu'il faut penser à effacer : on VÉRIFIE.
+ * N'importe quel chemin qui change un critère — pastille, curseur, croix d'une
+ * étiquette — se corrige tout seul au prochain rendu.
+ */
+function collectionEncoreValide() {
+  if (!state.collection) return false;
+  const c = COLLECTIONS.find(x => x.id === state.collection);
+  if (!c) return false;
+  const memesGenres = [...state.genres].sort((a, b) => a - b).join(',') === [...c.genres].sort((a, b) => a - b).join(',');
+  return memesGenres
+    && (state.sousGenre || null) === (c.topic || null)
+    && (state.language || '') === (c.language || '')
+    && (state.runtimeMax || '') === String(c.runtime || '')
+    && (state.decade || '') === (c.decade || '')
+    && state.type === 'movie'
+    && state.minimumVotes === '0'
+    && !state.tris.length
+    && !state.query.trim();
+}
+
 function show() {
+  if (state.collection && !collectionEncoreValide()) state.collection = null;
+  invalidateDiscovery();
   updateCollectionHeading();
+  el('search-pagination').hidden = true;
+  if (state.live && !state.liste && !state.forYou) return runSearch();
   /* « Ma liste » d'abord : c'est un LIEU, pas un filtre de plus. Les genres, le
      type et les tris s'appliquent ensuite, par-dessus, sans réseau. */
   if (state.liste) return showListe(state.liste === 'tout' ? null : state.liste);
@@ -1144,11 +1304,7 @@ function reelCard(item, index) {
     frame.setAttribute('allow', 'autoplay; encrypted-media');
     frame.setAttribute('tabindex', '-1');
     frame.setAttribute('aria-hidden', 'true');
-    frame.addEventListener('load', () => {
-      // Retirer « src » déclenche aussi un load : sans ce garde-fou, une carte
-      // libérée se croirait vivante et afficherait un cadre vide.
-      if (frame.getAttribute('src')) frame.classList.add('is-live');
-    });
+    frame.title = 'Bande-annonce : ' + film.title;
     stage.append(frame);
   }
 
@@ -1167,13 +1323,33 @@ function reelCard(item, index) {
     const sticker = STICKER_BY_ID.get(id);
     if (sticker) sig.append(emojiImg(sticker.emoji));
   }
-  foot.append(sig);
-
   const nom = document.createElement('span');
   nom.className = 'reel__name';
   nom.textContent = film.title;
-  foot.append(nom);
-
+  const meta = document.createElement('p');
+  meta.className = 'moment-meta';
+  meta.textContent = (video ? (video.type === 'Trailer' ? 'BANDE-ANNONCE' : video.type) : 'AFFICHE') + ' · ' + metaLine(film);
+  const overview = document.createElement('p');
+  overview.className = 'moment-overview';
+  overview.textContent = film.overview || 'Découvre les informations de ce titre dans sa fiche.';
+  const details = document.createElement('details');
+  details.className = 'moment-details';
+  const summary = document.createElement('summary');
+  summary.textContent = 'Toutes les informations';
+  const detailContent = document.createElement('div');
+  details.append(summary, detailContent);
+  details.addEventListener('toggle', async () => {
+    if (!details.open) return;
+    detailContent.textContent = 'Chargement des informations…';
+    await fetchDetail(film);
+    if (!details.isConnected) return;
+    detailContent.replaceChildren(buildTextBlock(film, { sansTitre: true }));
+  });
+  const openDetail = document.createElement('button');
+  openDetail.type = 'button'; openDetail.className = 'moment-open';
+  openDetail.textContent = 'Ouvrir la fiche';
+  openDetail.addEventListener('click', () => openCard(film));
+  foot.append(meta, nom, overview, details, openDetail);
   stage.append(foot);
 
   if (mark) {
@@ -1193,6 +1369,66 @@ function reelCard(item, index) {
   stage.append(open);
 
   card.append(stage);
+  const controls = document.createElement('div');
+  controls.className = 'moment-controls';
+  const focus = document.createElement('button');
+  focus.type = 'button'; focus.textContent = 'Masquer les infos';
+  focus.setAttribute('aria-pressed', 'false');
+  focus.addEventListener('click', () => {
+    const hidden = card.classList.toggle('moment-focus');
+    focus.textContent = hidden ? 'Afficher les infos' : 'Masquer les infos';
+    focus.setAttribute('aria-pressed', String(hidden));
+    foot.inert = hidden;
+  });
+  controls.append(focus);
+  if (video) {
+    const sound = document.createElement('button');
+    sound.type = 'button'; sound.textContent = 'Activer le son';
+    sound.setAttribute('aria-pressed', 'false');
+    sound.addEventListener('click', () => {
+      const on = card.dataset.sound !== 'on';
+      for (const other of wallEl.querySelectorAll('.reel[data-sound="on"]')) {
+        other.dataset.sound = 'off';
+        playerCommand(other.querySelector('iframe'), 'mute');
+        const control = other.querySelector('[data-sound-control]');
+        if (control) { control.textContent = 'Activer le son'; control.setAttribute('aria-pressed', 'false'); }
+      }
+      card.dataset.sound = on ? 'on' : 'off';
+      const frame = stage.querySelector('iframe');
+      playerCommand(frame, on ? 'unMute' : 'mute');
+      if (on) { playerCommand(frame, 'setVolume', [100]); playerCommand(frame, 'playVideo'); }
+      sound.textContent = on ? 'Couper le son' : 'Activer le son';
+      sound.setAttribute('aria-pressed', String(on));
+    });
+    sound.dataset.soundControl = '';
+    controls.append(sound);
+    if (film.poster_path) {
+      const poster = document.createElement('button');
+      poster.type = 'button'; poster.textContent = 'Voir l’affiche';
+      poster.setAttribute('aria-pressed', 'false');
+      const still = stage.querySelector('.reel__still');
+      const originalStill = still?.src;
+      poster.addEventListener('click', () => {
+        const showingPoster = card.classList.toggle('moment-poster');
+        poster.textContent = showingPoster ? 'Voir la bande-annonce' : 'Voir l’affiche';
+        poster.setAttribute('aria-pressed', String(showingPoster));
+        const frame = stage.querySelector('iframe');
+        playerCommand(frame, 'mute');
+        card.dataset.sound = 'off';
+        sound.textContent = 'Activer le son';
+        sound.setAttribute('aria-pressed', 'false');
+        sound.disabled = showingPoster;
+        if (still) still.src = showingPoster ? state.client.posterUrl(film.poster_path, 'w780') : originalStill;
+        if (showingPoster) playerCommand(frame, 'pauseVideo');
+        else if (!frame.getAttribute('src')) {
+          frame.src = momentUrl(video.key); watchPlayer(frame); armPlayFallback(stage, video.key);
+        } else playerCommand(frame, 'playVideo');
+      });
+      controls.append(poster);
+    }
+  }
+  card.append(controls);
+  if (video) stage.append(buildPlaybackControls(stage, film, video));
 
   const react = document.createElement('div');
   react.className = 'reel__react';
@@ -1220,18 +1456,23 @@ const momentObserver = new IntersectionObserver(entries => {
   for (const entry of entries) {
     const frame = entry.target.querySelector('iframe[data-key]');
     if (!frame) continue;
-    if (entry.isIntersecting) {
+    if (entry.isIntersecting && entry.intersectionRatio >= 0.6 && !entry.target.classList.contains('moment-poster')) {
       if (!frame.getAttribute('src')) {
         frame.src = momentUrl(frame.dataset.key);
         watchPlayer(frame);
         armPlayFallback(frame.closest('.reel__stage'), frame.dataset.key);
       }
     } else if (frame.getAttribute('src')) {
+      playerCommand(frame, 'mute');
+      playerCommand(frame, 'pauseVideo');
       frame.removeAttribute('src');
       frame.classList.remove('is-live');
+      entry.target.dataset.sound = 'off';
+      const sound = entry.target.querySelector('[data-sound-control]');
+      if (sound) { sound.textContent = 'Activer le son'; sound.setAttribute('aria-pressed', 'false'); }
     }
   }
-}, { root: wallEl, rootMargin: '400px 400px' });
+}, { root: wallEl, threshold: [0, 0.6] });
 
 function observeMoments() {
   momentObserver.disconnect();
@@ -1481,100 +1722,6 @@ function renderTris() {
    descende dans le catalogue au lieu de tourner en rond. Résolus à la demande
    et gardés en cache — l'identifiant d'un mot-clé ne change jamais.        */
 
-const SOUS_GENRES = {
-  28: [ // Action
-    ['arts martiaux', '🥋', 'martial arts'], ['espionnage', '🕶️', 'spy'],
-    ['poursuite', '🚗', 'car chase'], ['arts martiaux', '🥋', 'kung fu'],
-    ['super-héros', '🦸', 'superhero'], ['arts martiaux', '🥋', 'samurai']
-  ],
-  12: [ // Aventure
-    ['exploration', '🧭', 'exploration'], ['naufrage', '🌊', 'shipwreck'],
-    ['trésor', '💎', 'treasure hunt'], ['jungle', '🌴', 'jungle'],
-    ['montagne', '🏔️', 'mountain climbing'], ['désert', '🏜️', 'desert']
-  ],
-  16: [ // Animation
-    ['anime', '🌸', 'anime'], ['pâte à modeler', '🧱', 'stop motion'],
-    ['conte', '🧚', 'fairy tale'], ['musical', '🎵', 'musical'],
-    ['enfance', '🧒', 'childhood'], ['adaptation manga', '📖', 'based on manga']
-  ],
-  35: [ // Comédie
-    ['parodie', '🎭', 'parody'], ['comédie romantique', '💘', 'romantic comedy'],
-    ['humour noir', '🖤', 'dark comedy'], ['buddy movie', '👯', 'buddy comedy'],
-    ['satire', '📰', 'satire'], ['stand-up', '🎤', 'stand-up comedy']
-  ],
-  80: [ // Crime
-    ['braquage', '💰', 'heist'], ['mafia', '🚬', 'mafia'],
-    ['tueur en série', '🔪', 'serial killer'], ['drogue', '💊', 'drug trade'],
-    ['braquage', '💰', 'robbery'], ['police corrompue', '🚔', 'corrupt cop']
-  ],
-  99: [ // Documentaire
-    ['nature', '🌿', 'nature'], ['musique', '🎸', 'music documentary'],
-    ['sport', '🏅', 'sport'], ['politique', '🏛️', 'politics'],
-    ['science', '🔬', 'science'], ['histoire vraie', '📜', 'true story']
-  ],
-  18: [ // Drame
-    ['famille', '👨‍👩‍👧', 'family drama'], ['deuil', '🕯️', 'grief'],
-    ['maladie', '🏥', 'illness'], ['pauvreté', '🏚️', 'poverty'],
-    ['adolescence', '🎒', 'coming of age'], ['justice', '⚖️', 'courtroom']
-  ],
-  10751: [ // Familial
-    ['enfants', '🧸', 'children'], ['animaux', '🐕', 'animal'],
-    ['magie', '🪄', 'magic'], ['Noël', '🎄', 'christmas'],
-    ['amitié', '🤝', 'friendship'], ['école', '🏫', 'school']
-  ],
-  14: [ // Fantastique
-    ['magie', '🪄', 'magic'], ['dragons', '🐉', 'dragon'],
-    ['monde imaginaire', '🗺️', 'fantasy world'], ['malédiction', '🕯️', 'curse'],
-    ['fées', '🧚', 'fairy'], ['mythe', '🏛️', 'mythology']
-  ],
-  36: [ // Histoire
-    ['seconde guerre', '🪖', 'world war ii'], ['antiquité', '🏺', 'ancient rome'],
-    ['moyen âge', '⚔️', 'middle ages'], ['biographie', '📜', 'biography'],
-    ['révolution', '✊', 'revolution'], ['empire', '👑', 'empire']
-  ],
-  27: [ // Horreur
-    ['zombies', '🧟', 'zombie'], ['vampires', '🧛', 'vampire'],
-    ['fantômes', '👻', 'ghost'], ['possession', '😈', 'demonic possession'],
-    ['tueur', '🔪', 'slasher'], ['loup-garou', '🐺', 'werewolf']
-  ],
-  10402: [ // Musique
-    ['rock', '🎸', 'rock band'], ['jazz', '🎷', 'jazz'],
-    ['classique', '🎻', 'classical music'], ['rap', '🎤', 'hip-hop'],
-    ['danse', '💃', 'dance'], ['opéra', '🎭', 'opera']
-  ],
-  9648: [ // Mystère
-    ['enquête', '🔍', 'investigation'], ['disparition', '🕳️', 'missing person'],
-    ['whodunit', '🕵️', 'whodunit'], ['amnésie', '🧠', 'amnesia'],
-    ['complot', '📎', 'conspiracy'], ['énigme', '🧩', 'puzzle']
-  ],
-  10749: [ // Romance
-    ['coup de foudre', '💘', 'love at first sight'], ['mariage', '💍', 'wedding'],
-    ['adultère', '💔', 'adultery'], ['lettres', '💌', 'love letter'],
-    ['été', '☀️', 'summer romance'], ['rupture', '🥀', 'breakup']
-  ],
-  878: [ // Science-Fiction
-    ['intelligence artificielle', '🤖', 'artificial intelligence'],
-    ['voyage spatial', '🚀', 'space travel'], ['dystopie', '🏚️', 'dystopia'],
-    ['voyage temporel', '⏳', 'time travel'], ['cyberpunk', '🌃', 'cyberpunk'],
-    ['invasion', '👽', 'alien invasion'], ['clonage', '🧬', 'cloning']
-  ],
-  53: [ // Thriller
-    ['enlèvement', '🪢', 'kidnapping'], ['trahison', '🎭', 'betrayal'],
-    ['espionnage', '🕶️', 'spy'], ['vengeance', '🔥', 'revenge'],
-    ['poursuite', '🏃', 'chase'], ['manipulation', '🪞', 'manipulation']
-  ],
-  10752: [ // Guerre
-    ['seconde guerre', '🪖', 'world war ii'], ['viêtnam', '🌴', 'vietnam war'],
-    ['tranchées', '⛏️', 'trench warfare'], ['résistance', '✊', 'resistance'],
-    ['aviation', '✈️', 'fighter pilot'], ['débarquement', '🚢', 'd-day']
-  ],
-  37: [ // Western
-    ['shérif', '⭐', 'sheriff'], ['hors-la-loi', '🤠', 'outlaw'],
-    ['vengeance', '🔥', 'revenge'], ['frontière', '🌵', 'frontier'],
-    ['duel', '🔫', 'gunfight'], ['ranch', '🐎', 'ranch']
-  ]
-};
-
 /** L'identifiant d'un mot-clé, demandé une fois puis gardé. */
 async function motCleId(nom) {
   const cache = getKeywordCache();
@@ -1686,47 +1833,25 @@ function neufs(items) {
 }
 
 /** Les sous-genres du genre choisi, s'il en a. */
+function topicLabel(key) {
+  return Object.values(SOUS_GENRES).flat().find(t => t[2] === key)?.[0] || key;
+}
 function renderSousFiltres() {
   const host = el('sous-filtres');
-  // La rangée entière disparaît, libellé compris : un libellé « Préciser » seul
-  // sur sa ligne annoncerait une rangée qui n'existe pas.
-  const rangée = el('row-sous-filtres');
-  const choisis = state.genres.filter(id => SOUS_GENRES[id]);
-
-  if (!choisis.length) {
-    host.hidden = true;
-    host.replaceChildren();
-    if (rangée) rangée.hidden = true;
-    return;
-  }
-
-  /* Deux genres à la fois : on ne peut pas préciser les deux d'un coup. Avant,
-     la rangée disparaissait sans un mot — une commande qui s'évapore se lit
-     comme une panne, pas comme une règle. Elle reste, et elle dit pourquoi. */
-  if (choisis.length > 1) {
-    const note = document.createElement('span');
-    note.className = 'row__note';
-    note.textContent = 'Un seul genre à la fois pour préciser.';
-    host.replaceChildren(note);
-    host.hidden = false;
-    if (rangée) rangée.hidden = false;
-    majDebordement();
-    return;
-  }
-
-  const frag = document.createDocumentFragment();
-  for (const [nom, emoji, mot] of SOUS_GENRES[choisis[0]]) {
-    frag.append(filterChip(emoji, nom, state.sousGenre === mot, () => {
-      state.sousGenre = state.sousGenre === mot ? null : mot;
-      state.dejaVu = new Set();
-      renderSousFiltres();
-      scheduleFilter();
-    }));
-  }
-  host.replaceChildren(frag);
+  el('row-sous-filtres').hidden = false;
   host.hidden = false;
-  if (rangée) rangée.hidden = false;
-  majDebordement();
+  const query = fold(el('topic-search')?.value || '');
+  const groups = state.genres.length ? state.genres.map(id => SOUS_GENRES[id] || []) : Object.values(SOUS_GENRES);
+  const topics = [...new Map(groups.flat().map(t => [t[2], t])).values()];
+  host.replaceChildren(...topics.filter(t => !query || fold(t[0]).includes(query)).map(([name, emoji, key]) =>
+    filterChip(emoji, name, state.sousGenre === key, () => {
+      state.sousGenre = state.sousGenre === key ? null : key;
+      state.dejaVu = new Set(); renderSousFiltres(); scheduleFilter();
+    })
+  ));
+  if (!host.children.length) {
+    const empty = document.createElement('p'); empty.className = 'row__note'; empty.textContent = 'Aucun thème avec ce nom.'; host.append(empty);
+  }
 }
 
 /**
@@ -1861,6 +1986,7 @@ const DELAI_FRAPPE = 340;
 const DELAI_CLIC = 120;
 
 function scheduleFilter(delai = DELAI_CLIC) {
+  invalidateDiscovery();
   clearTimeout(filterTimer);
   filterTimer = setTimeout(show, delai);
 }
@@ -1873,77 +1999,176 @@ const filtresActifs = () =>
  * La recherche. TMDB ne sait pas filtrer une recherche par texte : on filtre
  * donc nous-mêmes sur les genres que les résultats portent déjà.
  */
-async function runSearch(page = 1, { append = false } = {}) {
-  if (!append) renderSkeletons(12);
-  state.pageLoader = runSearch;
-  const q = state.query.trim();
-  let trouves = [];
+let discovery = null;
+let discoveryAbort = null;
+let discoveryRevision = 0;
+let discoveryBusy = false;
+let discoveryError = '';
+let discoveryFiltered = false;
+let discoveryIntent = '';
+const topicMemory = new Map();
 
-  try {
-    if (q) {
-      const data = await api('/search/multi', { query: q, include_adult: false, page });
-      trouves = (data.results || [])
-        .filter(r => r.media_type === 'movie' || r.media_type === 'tv')
-        .map(r => normalize(r, r.media_type));
-    } else {
-      const motCle = state.sousGenre ? await motCleId(state.sousGenre) : null;
-      /* Un type qui ne sait pas dire toute la demande n'est pas interrogé :
-         `/discover/tv` avec un identifiant de film ne renvoie pas d'erreur, il
-         renvoie zéro — c'est ce qui vidait la moitié de chaque catégorie. */
-      const kinds = (state.type === 'all' ? ['movie', 'tv'] : [state.type])
-        .filter(kind => !state.genres.length || genresPourType(kind === 'tv' ? 'serie' : 'film'));
-      const paquets = await Promise.all(kinds.map(kind => api('/discover/' + kind, {
-        sort_by: triServeur(kind) || 'popularity.desc',
-        // Un tri par note sans plancher de votes remonte des films à trois
-        // voix : le plancher monte avec le tri.
-        'vote_count.gte': state.tris[0] === 'note' ? 1000 : 100,
-        with_genres: genresPourType(kind === 'tv' ? 'serie' : 'film') || undefined,
-        with_keywords: motCle || undefined,
-        page
-      }).catch(() => ({ results: [] }))));
-      trouves = paquets.flatMap((paquet, i) => (paquet.results || []).map(r => normalize(r, kinds[i])));
-      trouves = trier(trouves);
-    }
-  } catch (error) {
-    announce('La recherche a échoué : ' + error.message);
+function invalidateDiscovery() {
+  discoveryRevision++;
+  discoveryAbort?.abort();
+  discovery = null; discoveryBusy = false; state.loadingMore = false;
+}
+
+function syncDiscoveryControls() {
+  for (const [id, key] of [['filter-decade','decade'],['filter-runtime','runtimeMax'],['filter-language','language'],['filter-votes','minimumVotes']]) {
+    if (el(id)) el(id).value = state[key];
   }
+}
 
-  if (state.type !== 'all') trouves = trouves.filter(f => f.kind === state.type);
-  if (state.genres.length) {
-    // Les genres sont ramenés au vocabulaire des films dès `normalize` : une
-    // seule comparaison vaut pour les deux types.
-    trouves = trouves.filter(f => (f.genre_ids || []).some(g => state.genres.includes(g)));
+function initDiscoveryControls() {
+  for (const [id, key] of [['filter-decade','decade'],['filter-runtime','runtimeMax'],['filter-language','language'],['filter-votes','minimumVotes']]) {
+    el(id).addEventListener('change', event => { state[key] = event.target.value; scheduleFilter(); });
   }
+  el('topic-search').addEventListener('input', renderSousFiltres);
+  el('load-next').addEventListener('click', () => {
+    if (discovery) loadMore(); else show();
+  });
+  el('btn-collections').addEventListener('click', () => {
+    const open = el('collections').hidden;
+    el('collections').hidden = !open;
+    el('btn-collections').setAttribute('aria-expanded', String(open));
+  });
+  el('collections').replaceChildren(...COLLECTIONS.map(collection => {
+    const button = document.createElement('button'); button.type = 'button'; button.className = 'collection-tile'; button.dataset.tone = collection.tone;
+    const title = document.createElement('strong'); title.textContent = collection.title;
+    const sub = document.createElement('span'); sub.textContent = collection.subtitle;
+    button.append(title,sub);
+    button.addEventListener('click', () => {
+      state.collection = collection.id; state.saga = null; state.query = ''; el('search').value = ''; el('search-clear').hidden = true;
+      state.genres = [...collection.genres]; state.sousGenre = collection.topic || null; state.type = 'movie';
+      state.language = collection.language || ''; state.runtimeMax = String(collection.runtime || ''); state.decade = collection.decade || ''; state.minimumVotes = '0';
+      state.tris = []; state.liste = null; state.forYou = false; state.picked = [];
+      syncDiscoveryControls(); renderFilters(); renderSousFiltres(); renderTris(); renderListe();
+      el('collections').hidden = true; el('btn-collections').setAttribute('aria-expanded','false'); show();
+    }); return button;
+  }));
+}
 
-  announce(trouves.length + (trouves.length > 1 ? ' résultats.' : ' résultat.'));
+function updateDiscoveryStatus() {
+  const count = state.mode === 'film' ? state.wall.length : state.items.filter(i => i.kind !== 'comment').length;
+  const total = discovery?.total;
+  let label = discoveryBusy ? 'Chargement…' : count.toLocaleString('fr-FR') + ' titres chargés';
+  if (total != null) label += discoveryFiltered ? ' · catalogue parcouru : ' + total.toLocaleString('fr-FR') + ' titres' : ' sur ' + total.toLocaleString('fr-FR');
+  if (discoveryIntent) label += ' · ' + discoveryIntent;
+  if (discoveryError) label = discoveryError;
+  el('search-status').textContent = label;
+  el('load-next').hidden = !discoveryError && !state.more;
+  el('load-next').disabled = discoveryBusy;
+  el('load-next').textContent = discoveryBusy ? 'Chargement…' : discoveryError ? 'Réessayer' : 'Charger la suite';
+  el('search-pagination').hidden = false;
+  el('collection-note').textContent = state.collection ? COLLECTIONS.find(c => c.id === state.collection)?.title || '' : state.saga?.name || (state.query ? '« ' + state.query + ' »' : '');
+}
 
-  if (state.mode === 'film') {
-    trouves.forEach(f => state.films.set(keyOf(f), f));
-    if (append) {
-      const gardes = neufs(trouves);
-      if (!gardes.length) { state.page = page; state.more = page < 500; return; }
-      state.wall.push(...gardes);
-      appendWallCards(gardes);
-    } else {
-      state.wall = trouves;
-      state.scroll.film = { top: 0, left: 0 };
-      if (trouves.length) renderWall();
-      else {
-        const vide = document.createElement('p');
-        vide.className = 'wall-vide';
-        vide.textContent = raisonDuVide();
-        wallEl.replaceChildren(vide);
-      }
-    }
-    state.page = page;
-    state.more = trouves.length > 0 && page < 500;
-  } else {
-    // Dans un fil, on ne garde que ce dont on peut montrer un moment.
-    const courts = trouves.slice(0, 12);
-    const videos = await mapLimit(courts, 6, film => fetchVideos(film));
-    state.items = interleave(courts.map((film, i) => ({ film, video: bestVideo(videos[i]) })));
+async function runSearch(_page = 1, { append = false } = {}) {
+  if (append && discoveryBusy) return;
+  const revision = discoveryRevision;
+  discoveryBusy = true; discoveryError = '';
+  if (!append) {
+    discoveryAbort = new AbortController();
+    state.wall = []; state.items = []; state.page = 0; state.more = false;
     state.scroll[state.mode] = { top: 0, left: 0 };
-    renderFeed();
+    renderSkeletons(12);
+  }
+  updateDiscoveryStatus();
+  try {
+    if (!append) {
+      const signal = discoveryAbort.signal;
+      const query = state.query.trim();
+      const intent = parseDiscoveryQuery(query, GENRES, Object.values(SOUS_GENRES).flat());
+      const genres = [...new Set([...state.genres, ...(intent?.genres || [])])];
+      const topic = state.sousGenre || intent?.topic;
+      discoveryIntent = intent ? 'Thèmes : ' + intent.label : '';
+      const text = intent ? '' : query;
+      const filters = { decade: state.decade, runtime: Number(state.runtimeMax), language: state.language, votes: Number(state.minimumVotes) };
+      const movieKinds = state.type === 'all' ? ['movie','tv'] : [state.type];
+      let ids = [];
+      if (topic) {
+        if (topicMemory.has(topic)) ids = topicMemory.get(topic);
+        else { ids = await resolveTopicIds(topic, api, signal); topicMemory.set(topic, ids); }
+        if (!ids.length) throw new Error('Ce thème n’a pas de mot-clé exact dans TMDB. Essaie un thème voisin.');
+      }
+      signal.throwIfAborted();
+      const request = async (path, params, options) => {
+        if (path.startsWith('/collection/')) {
+          const data = await api(path, {}, options);
+          return { results: data.parts || [], total_pages: 1, total_results: data.parts?.length || 0 };
+        }
+        return api(path, params, options);
+      };
+      let sources = movieKinds.flatMap(kind => {
+        const mapped = genres.map(id => GENRES_TMDB[id]?.[kind === 'movie' ? 'film' : 'serie']).filter(Boolean);
+        if (mapped.length !== genres.length) return [];
+        const dateKey = kind === 'movie' ? 'primary_release_date' : 'first_air_date';
+        return [{ kind, path: (text ? '/search/' : '/discover/') + kind, params: text ? { query: text, include_adult: false } : {
+          include_adult: false, sort_by: triServeur(kind) || 'popularity.desc',
+          with_genres: [...new Set(mapped)].join(',') || undefined,
+          with_keywords: ids.join('|') || undefined,
+          'vote_count.gte': filters.votes || undefined,
+          with_original_language: filters.language || undefined,
+          'with_runtime.lte': filters.runtime || undefined,
+          [dateKey + '.gte']: filters.decade ? filters.decade + '-01-01' : undefined,
+          [dateKey + '.lte']: filters.decade ? (Number(filters.decade) + 9) + '-12-31' : undefined
+        } }];
+      });
+      if (state.saga) sources = [{ kind: 'movie', path: '/collection/' + state.saga.id, params: {} }];
+      discoveryFiltered = Boolean(text && (genres.length || topic || Object.values(filters).some(Boolean)));
+      const accept = async film => {
+        if (!text) return true;
+        if (genres.length && !genres.every(id => film.genre_ids.includes(id))) return false;
+        if (filters.language && film.original_language !== filters.language) return false;
+        if (filters.votes && film.vote_count < filters.votes) return false;
+        if (filters.decade && !(Number(film.date?.slice(0,4)) >= Number(filters.decade) && Number(film.date?.slice(0,4)) <= Number(filters.decade) + 9)) return false;
+        if (ids.length) {
+          const kw = await api('/' + film.kind + '/' + film.id + '/keywords', {}, { signal });
+          if (!(kw.keywords || kw.results || []).some(k => ids.includes(k.id))) return false;
+        }
+        if (filters.runtime) {
+          const detail = await api('/' + film.kind + '/' + film.id, {}, { signal });
+          const minutes = detail.runtime || detail.episode_run_time?.[0];
+          if (!minutes || minutes > filters.runtime) return false;
+        }
+        return true;
+      };
+      discovery = createDiscoverySession({ request, sources, normalize, accept, signal });
+    }
+    const session = discovery;
+    const films = trier(await session.next({ target: state.mode === 'film' ? 40 : 20 }));
+    if (revision !== discoveryRevision) return;
+    films.forEach(f => state.films.set(keyOf(f), f));
+    state.more = session.hasMore;
+    state.page++;
+    state.pageLoader = runSearch;
+    if (state.mode === 'film') {
+      state.wall.push(...films);
+      if (append) appendWallCards(films);
+      else if (state.wall.length) renderWall();
+      else {
+        const empty = document.createElement('p'); empty.className = 'wall-vide';
+        empty.textContent = session.hasMore ? 'Aucun résultat dans les premières pages. Continue la recherche avec « Charger la suite ».' : raisonDuVide();
+        wallEl.replaceChildren(empty);
+      }
+    } else {
+      const videos = await mapLimit(films, 4, film => fetchVideos(film));
+      if (revision !== discoveryRevision) return;
+      const items = interleave(films.map((film,i) => ({ film, video: bestVideo(videos[i]) })));
+      state.items.push(...items);
+      if (append) appendFeedCards(items); else renderFeed();
+    }
+    announce(state.wall.length + ' titres chargés.');
+  } catch (error) {
+    if (revision !== discoveryRevision || error.name === 'AbortError') return;
+    discoveryError = error.message.startsWith('Ce thème') ? error.message : 'Chargement interrompu. Tu peux réessayer sans perdre les résultats.';
+    if (!append) {
+      const message = document.createElement('p'); message.className = 'wall-vide'; message.textContent = discoveryError; wallEl.replaceChildren(message);
+    }
+    state.more = Boolean(discovery?.hasMore);
+  } finally {
+    if (revision === discoveryRevision) { discoveryBusy = false; updateDiscoveryStatus(); }
   }
 }
 
@@ -2297,7 +2522,6 @@ function buildActions(card, film, variante) {
     ['seen', '👁️', 'Vu'],
     ["love", "❤️", "J'adore"],
     ['want', '🎟️', 'Dans ma liste'],
-    [null, '🔍', 'Chercher des films comme celui-ci'],
     [null, '🎬', 'Films similaires']
   ];
 
@@ -2379,90 +2603,72 @@ const pointeur = { x: -1, y: -1 };
 addEventListener('pointermove', e => { pointeur.x = e.clientX; pointeur.y = e.clientY; }, { passive: true });
 
 /** Le survol n'existe qu'à la souris ; au doigt, c'est la fiche qui s'ouvre. */
+let activePreview = null;
+function closeCataloguePreview() {
+  clearTimeout(peekTimer);
+  if (activePreview) {
+    activePreview.classList.remove('has-preview');
+    activePreview.querySelector('.catalogue-preview')?.setAttribute('inert', '');
+    activePreview = null;
+  }
+}
+wallEl.addEventListener('scroll', closeCataloguePreview, { passive: true });
+addEventListener('resize', closeCataloguePreview, { passive: true });
+
 function bindPeek(card, film) {
   if (!canHover()) return;
-
-  let fermeture = 0;
-  const fermer = () => {
-    clearTimeout(peekTimer);
-    card.classList.remove('is-peeking');
-    card.classList.remove('is-affiche');
-    if (card.__deck) clearTimeout(card.__deck.timer);
+  const build = () => {
+    if (card.querySelector('.catalogue-preview')) return;
+    const preview = document.createElement('div');
+    preview.className = 'catalogue-preview';
+    const meta = document.createElement('p');
+    meta.className = 'preview-meta';
+    meta.textContent = (film.kind === 'tv' ? 'SÉRIE' : 'FILM') + (film.date ? ' · ' + film.date.slice(0, 4) : '');
+    const title = document.createElement('h2');
+    title.textContent = film.title;
+    const overview = document.createElement('p');
+    overview.className = 'preview-overview';
+    overview.textContent = film.overview || 'Ouvre la fiche pour découvrir ce titre.';
+    const actions = document.createElement('div');
+    actions.className = 'preview-actions';
+    const more = document.createElement('button');
+    more.type = 'button'; more.textContent = 'Voir la fiche';
+    more.addEventListener('click', () => { closeCataloguePreview(); openCard(film); });
+    const save = document.createElement('button');
+    save.type = 'button'; save.className = 'preview-save';
+    save.setAttribute('aria-label', 'À voir : ' + film.title);
+    save.setAttribute('aria-pressed', String(state.marks[keyOf(film)] === 'want'));
+    save.append(uiIcon('want'));
+    save.addEventListener('click', () => {
+      const marked = toggleMark(film, 'want');
+      save.setAttribute('aria-pressed', String(marked));
+      announce(marked ? 'Ajouté à ta liste.' : 'Retiré de ta liste.');
+    });
+    actions.append(more, save);
+    preview.append(meta, title, overview, actions);
+    preview.setAttribute('inert', '');
+    card.append(preview);
   };
-  /* Un délai avant de fermer : le moindre écart de souris emportait la
-     bande-annonce en cours. Elle ne doit pas disparaître si facilement. */
-  const fermerBientot = () => {
-    clearTimeout(fermeture);
-    fermeture = setTimeout(fermer, 420);
+  const reveal = () => {
+    closeCataloguePreview();
+    build();
+    activePreview = card;
+    card.querySelector('.catalogue-preview').removeAttribute('inert');
+    card.classList.add('has-preview');
   };
-
   card.addEventListener('pointerenter', event => {
+    if (event.pointerType !== 'mouse') return;
     clearTimeout(peekTimer);
-
-    /* Intention de survol, et non simple délai.
-     *
-     * 240 ms étaient nécessaires pour ne pas déployer une fiche en traversant la
-     * grille — mais une fois arrêté sur une carte, ces 240 ms se subissaient.
-     *
-     * On juge donc le GESTE : si le pointeur a bougé de plus de 12 px depuis le
-     * dernier examen, c'était un passage. Mais on ne renonce pas pour autant —
-     * on RÉESSAIE. Sans cela, entrer sur le bord d'une affiche et glisser vers
-     * le centre (ce que fait tout le monde) n'aurait jamais rien ouvert : le
-     * pointeur n'entre qu'une fois par carte. La boucle s'arrête d'elle-même
-     * dès que le geste se pose, et `pointerleave` l'emporte de toute façon. */
-    /* Le point de départ est celui de l'ENTRÉE sur la carte : arriver dessus
-       est un mouvement, et il ne doit pas compter comme un passage. */
-    let dernier = { x: event.clientX, y: event.clientY };
-    let essais = 0;
-
-    const deployer = async () => {
-      // Le pointeur est parti : la boucle n'a plus rien à déployer.
-      if (!card.matches(':hover')) return;
-
-      const bouge = dernier.x >= 0 && pointeur.x >= 0 &&
-        Math.hypot(pointeur.x - dernier.x, pointeur.y - dernier.y) > 12;
-      dernier = { x: pointeur.x, y: pointeur.y };
-      if (bouge && essais++ < 10) {
-        peekTimer = setTimeout(deployer, 110);
-        return;
-      }
-      buildDeck(card, film);
-      card.classList.add('is-peeking');
-      showSlide(card, film, 0);
-      // Le détail ET les vidéos : sans elles, le dernier groupe n'existe pas.
-      // Le drapeau est `__extra` — c'est celui que pose fetchExtras. Tester
-      // `__videos` ici ne servait à rien : personne ne le pose sur ce chemin.
-      if ((!film.__detail || !film.__extra) && state.live) {
-        await Promise.all([fetchDetail(film), fetchExtras(film)]);
-        /* Le détail arrive et les groupes changent. On refait le diaporama,
-           mais on retrouve le groupe où on était PAR SON NOM : la
-           bande-annonce qu'on vient d'ouvrir ne doit pas s'évaporer parce que
-           les données sont arrivées après. */
-        if (card.classList.contains('is-peeking')) {
-          const voulu = card.__deck.slides[card.__deck.at]?.nom;
-          card.classList.remove('is-affiche');
-          card.__deck = null;
-          buildDeck(card, film);
-          const ou = card.__deck.slides.findIndex(s => s.nom === voulu);
-          showSlide(card, film, ou >= 0 ? ou : 0);
-        }
-      }
-    };
-
-    peekTimer = setTimeout(deployer, 110);
+    peekTimer = setTimeout(() => { if (card.matches(':hover') && card.isConnected) reveal(); }, 220);
   });
-  card.addEventListener('pointerleave', fermerBientot);
-  card.addEventListener('pointerenter', () => clearTimeout(fermeture));
-  card.addEventListener('focus', () => {
-    buildDeck(card, film);
-    card.classList.add('is-peeking');
-    showSlide(card, film, 0);
+  card.addEventListener('pointerleave', () => {
+    clearTimeout(peekTimer);
+    if (activePreview === card && !card.contains(document.activeElement)) closeCataloguePreview();
   });
-  card.addEventListener('blur', fermerBientot);
+  card.addEventListener('focusin', event => { if (event.target.matches(':focus-visible')) reveal(); });
+  card.addEventListener('focusout', event => { if (!card.contains(event.relatedTarget)) closeCataloguePreview(); });
   card.addEventListener('keydown', event => {
-    if (card.__deck && event.key === 'ArrowRight') { event.preventDefault(); showSlide(card, film, card.__deck.at + 1); }
-    if (card.__deck && event.key === 'ArrowLeft') { event.preventDefault(); showSlide(card, film, card.__deck.at - 1); }
-    if (event.key === 'Escape') fermer();
+    if (event.key === 'Escape') { event.stopPropagation(); closeCataloguePreview(); }
   });
 }
 
@@ -2588,6 +2794,7 @@ function buildCardPalette(film, signature) {
 }
 
 async function openCard(film) {
+  for (const frame of wallEl.querySelectorAll('iframe')) playerCommand(frame, 'pauseVideo');
   if (!film) return;
   current = film;
   state.paletteOpen = false;
@@ -2895,7 +3102,110 @@ function buildTextBlock(film, { sansTitre = false } = {}) {
     wrap.append(row);
   }
 
+  wrap.append(buildFilmLinks(film));
   return wrap;
+}
+
+function externalLink(label, url) {
+  const a = document.createElement('a'); a.textContent = label; a.href = url; a.target = '_blank'; a.rel = 'noopener noreferrer'; return a;
+}
+function youtubeSearch(film, suffix) {
+  return 'https://www.youtube.com/results?search_query=' + encodeURIComponent(film.title + ' ' + (film.date || '').slice(0,4) + ' ' + suffix);
+}
+function buildFilmLinks(film) {
+  const host = document.createElement('section'); host.className = 'film-links'; host.setAttribute('aria-label', 'Vidéos et disponibilité');
+  const links = document.createElement('div'); links.className = 'film-links__videos';
+  links.append(externalLink('Bandes-annonces sur YouTube ↗', youtubeSearch(film, 'bande annonce officielle')),
+    externalLink('Chercher des critiques vidéo ↗', youtubeSearch(film, 'critique film avis')),
+    externalLink('Analyses du film ↗', youtubeSearch(film, 'analyse cinéma')));
+  host.append(links);
+  if (film.collection) {
+    const saga = document.createElement('button'); saga.type = 'button'; saga.className = 'saga-link'; saga.textContent = 'Explorer la saga : ' + film.collection.name;
+    saga.addEventListener('click', () => {
+      closeCard(); state.saga = film.collection; state.collection = null; state.query = ''; el('search').value = ''; el('search-clear').hidden = true;
+      state.genres = []; state.sousGenre = null; state.decade = ''; state.runtimeMax = ''; state.language = ''; state.minimumVotes = '0'; state.type = 'movie'; state.tris = []; state.liste = null; state.forYou = false;
+      syncDiscoveryControls(); renderFilters(); renderSousFiltres(); renderTris(); state.mode = 'film'; appEl.className = 'mode-film'; renderModes(); show();
+    }); host.append(saga);
+  }
+  const availability = document.createElement('div'); availability.className = 'availability';
+  const label = document.createElement('label'); label.textContent = 'Où le regarder ? ';
+  const region = document.createElement('select'); region.setAttribute('aria-label', 'Pays de visionnage');
+  for (const [id,name] of [['FR','France'],['BE','Belgique'],['CH','Suisse'],['CA','Canada'],['US','États-Unis'],['GB','Royaume-Uni']]) {
+    const option = document.createElement('option'); option.value = id; option.textContent = name; region.append(option);
+  }
+  label.append(region); const offers = document.createElement('div'); offers.className = 'availability__offers';
+  const render = () => {
+    offers.replaceChildren();
+    const data = film.providerRegions?.[region.value];
+    let present = false;
+    /* Les mêmes plateformes proposent souvent la location ET l'achat : TMDB
+       renvoie alors deux listes identiques, affichées deux fois. On regroupe les
+       modes qui partagent exactement la même liste — « Location et achat » se lit
+       d'un coup, là où la répétition se saute. */
+    const modes = [];
+    for (const [key,title] of [['flatrate','Abonnement'],['free','Gratuit'],['ads','Avec publicité'],['rent','Location'],['buy','Achat']]) {
+      const noms = plateformesDe(data?.[key]);
+      if (!noms.length) continue;
+      const meme = modes.find(m => m.noms.join('|') === noms.join('|'));
+      if (meme) meme.titres.push(title);
+      else modes.push({ titres: [title], noms });
+    }
+    for (const mode of modes) {
+      present = true;
+      const row = document.createElement('p');
+      const heading = document.createElement('strong');
+      heading.textContent = mode.titres.join(' et ') + ' · ';
+      row.append(heading, document.createTextNode(mode.noms.join(', ')));
+      offers.append(row);
+    }
+    if (!present) {
+      const empty = document.createElement('p'); empty.textContent = film.providerError ? 'Disponibilité momentanément inaccessible.' : 'Aucune offre renseignée dans ce pays. Cela ne signifie pas que le film est introuvable.'; offers.append(empty);
+    }
+    if (data?.link?.startsWith('https://')) offers.append(externalLink('Voir les offres disponibles ↗', data.link));
+    const attribution = document.createElement('small'); attribution.textContent = 'Disponibilités : JustWatch via TMDB. Les offres peuvent changer.'; offers.append(attribution);
+  };
+  region.addEventListener('change', render); render(); availability.append(label,offers); host.append(availability);
+  return host;
+}
+
+const timeLabel = seconds => Math.floor(Math.max(0, seconds || 0) / 60) + ':' + String(Math.floor(Math.max(0, seconds || 0) % 60)).padStart(2,'0');
+function updatePlaybackControls(frame) {
+  const bar = frame.closest('.reel__stage, .card-stage')?.querySelector('.playback');
+  if (!bar) return;
+  const info = frame.__playback || {};
+  const seek = bar.querySelector('input[type="range"]');
+  const pause = bar.querySelector('[data-pause]');
+  const playing = info.playerState === 1;
+  pause.textContent = playing ? 'Pause' : 'Lecture';
+  pause.setAttribute('aria-label', playing ? 'Mettre en pause' : 'Reprendre la lecture');
+  if (info.duration > 0) {
+    seek.disabled = false; seek.max = String(info.duration);
+    if (seek.dataset.seeking !== 'true') seek.value = String(info.currentTime || 0);
+    seek.setAttribute('aria-valuetext', timeLabel(Number(seek.value)) + ' sur ' + timeLabel(info.duration));
+    bar.querySelector('output').textContent = timeLabel(info.currentTime) + ' / ' + timeLabel(info.duration);
+  }
+}
+function buildPlaybackControls(stage, film, video) {
+  const bar = document.createElement('div'); bar.className = 'playback';
+  const row = document.createElement('div'); row.className = 'playback__buttons';
+  const frame = () => stage.querySelector('iframe');
+  const make = (label, action) => { const button = document.createElement('button'); button.type = 'button'; button.textContent = label; button.addEventListener('click', action); row.append(button); return button; };
+  const pause = make('Pause', () => playerCommand(frame(), frame()?.__playback?.playerState === 1 ? 'pauseVideo' : 'playVideo')); pause.dataset.pause = '';
+  for (const [label, delta] of [['−10 s',-10],['+10 s',10]]) make(label, () => {
+    const info = frame()?.__playback || {};
+    playerCommand(frame(), 'seekTo', [Math.min(info.duration || Infinity, Math.max(0,(info.currentTime || 0) + delta)),true]);
+  });
+  const speed = document.createElement('select'); speed.setAttribute('aria-label','Vitesse de lecture');
+  for (const rate of [0.5,1,1.25,1.5,2]) { const option = document.createElement('option'); option.value = rate; option.textContent = rate + '×'; option.selected = rate === 1; speed.append(option); }
+  speed.addEventListener('change', () => playerCommand(frame(),'setPlaybackRate',[Number(speed.value)])); row.append(speed);
+  row.append(externalLink('YouTube ↗','https://www.youtube.com/watch?v=' + encodeURIComponent(video.key)));
+  const seekRow = document.createElement('div'); seekRow.className = 'playback__seek';
+  const seek = document.createElement('input'); seek.type = 'range'; seek.min = '0'; seek.max = '1'; seek.step = '1'; seek.value = '0'; seek.disabled = true; seek.setAttribute('aria-label','Position dans la bande-annonce');
+  seek.addEventListener('input', () => { seek.dataset.seeking = 'true'; });
+  seek.addEventListener('change', () => { playerCommand(frame(),'seekTo',[Number(seek.value),true]); seek.dataset.seeking = 'false'; });
+  const output = document.createElement('output'); output.textContent = '0:00 / —'; seekRow.append(seek,output);
+  const status = document.createElement('span'); status.className = 'playback-status'; status.setAttribute('role','status');
+  bar.append(row,seekRow,status); return bar;
 }
 
 /** Ce qui se montre à la place du commentaire : le carton, ou l'invitation. */
@@ -2994,6 +3304,7 @@ function renderCardView(film) {
   } else if (!film.poster_path) {
     stage.append(posterEl(film, ''));
   }
+  if (moment) stage.append(buildPlaybackControls(stage, film, moment));
   top.append(stage);
 
   const back = document.createElement('button');
@@ -3052,12 +3363,17 @@ function renderCardView(film) {
   /* Le corps. */
   const body = document.createElement('div');
   body.className = 'card-body';
-  body.append(buildSigRow(film, signature));
   body.append(buildTextBlock(film));
 
   const rule = document.createElement('div');
   rule.className = 'rule';
-  body.append(rule, buildCommentSlot(film), buildReactHost(film, signature));
+  const feelings = document.createElement('details');
+  feelings.className = 'feelings';
+  feelings.open = state.paletteOpen;
+  const summary = document.createElement('summary');
+  summary.textContent = 'Ton ressenti';
+  feelings.append(summary, buildSigRow(film, signature), buildCommentSlot(film), buildReactHost(film, signature));
+  body.append(rule, feelings);
 
   const rule2 = document.createElement('div');
   rule2.className = 'rule';
@@ -3211,6 +3527,13 @@ function trapFiche(event) {
 }
 
 function closeCard() {
+  if (state.mode === 'reel') {
+    const viewport = wallEl.getBoundingClientRect();
+    for (const frame of wallEl.querySelectorAll('iframe[src]')) {
+      const bounds = frame.closest('.reel').getBoundingClientRect();
+      if (Math.min(bounds.bottom, viewport.bottom) - Math.max(bounds.top, viewport.top) > viewport.height * 0.6) playerCommand(frame, 'playVideo');
+    }
+  }
   const film = current;
   cardEl_.hidden = true;
   cardEl_.replaceChildren();
@@ -3313,12 +3636,8 @@ function announce(text) {
 
 function start() {
   loadStore();
-  el('btn-refine').addEventListener('click', () => {
-    const open = el('refinements').hidden;
-    el('refinements').hidden = !open;
-    el('btn-refine').setAttribute('aria-expanded', String(open));
-    majDebordement();
-  });
+  initCatalogueLayout();
+  el('btn-refine').addEventListener('click', () => setRefinements(el('refinements').hidden));
 
   const config = window.FRAME_CONFIG || {};
   state.credential = config.tmdbToken || config.tmdbKey || loadCredential();
