@@ -38,12 +38,26 @@
              aria-label="Rechercher un film ou une série"
              placeholder="Rechercher un film, une série…">
       <div id="query-chips" class="query-chips"></div>
-      <button id="btn-emoji" class="glyph glyph--sm" type="button" aria-label="Chercher par emoji" aria-expanded="false"></button>
-      <button id="search-clear" class="glyph glyph--sm" type="button" aria-label="Effacer la recherche" hidden></button>
+      <span class="search__tools">
+        <button id="btn-emoji" class="glyph glyph--sm" type="button" aria-label="Chercher par emoji" aria-expanded="false"></button>
+        <button id="search-clear" class="glyph glyph--sm" type="button" aria-label="Effacer la recherche" hidden></button>
+      </span>
     </div>
-    <div id="filters" role="group" aria-label="Filtres"></div>
-    <div id="sous-filtres" role="group" aria-label="Sous-catégories" hidden></div>
-    <div id="tris" role="group" aria-label="Ordre de présentation"></div>
+
+    <!-- Chaque rangée dit ce qu'elle est. Sans libellé, trois rangées de
+         pastilles identiques se lisaient comme une seule bouillie. -->
+    <div class="row" id="row-filtres">
+      <span class="row__label" aria-hidden="true">Genre</span>
+      <div id="filters" role="group" aria-label="Filtres"></div>
+    </div>
+    <div class="row" id="row-sous-filtres" hidden>
+      <span class="row__label" aria-hidden="true">Préciser</span>
+      <div id="sous-filtres" role="group" aria-label="Sous-catégories" hidden></div>
+    </div>
+    <div class="row" id="row-tris">
+      <span class="row__label" aria-hidden="true">Trier</span>
+      <div id="tris" role="group" aria-label="Ordre de présentation"></div>
+    </div>
 
     <!-- Le moteur par emoji tombe de la barre : une seule recherche, deux écritures. -->
     <footer id="dock">

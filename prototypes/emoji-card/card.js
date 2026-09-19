@@ -32,6 +32,11 @@ const SIGNATURE_MAX = 4;
 const CHOICES = 12;
 const FEED_MAX = 24;
 
+/* Les langues de vidéo qu'on accepte. `null` = les vidéos sans langue déclarée,
+   que TMDB ne renvoie pas autrement. L'ordre est une préférence, pas un filtre :
+   voir `bestVideo`. */
+const LANGUES_VIDEO = 'fr,en,null';
+
 /* Trois présentations, une seule matière et une seule langue. Changer de mode
    ne change jamais ce que tu as dit d'un film. */
 const MODES = [
@@ -304,24 +309,41 @@ async function fetchDetail(film) {
 /** Mots-clés et vidéos : une seule fois par film, puis gardés en mémoire. */
 async function fetchExtras(film) {
   if (film.__extra || !state.live) return;
+  film.__extra = true;
+  const base = '/' + (film.kind || 'movie') + '/' + film.id;
   try {
     const [kw, vids] = await Promise.all([
-      api('/' + (film.kind || 'movie') + '/' + film.id + '/keywords'),
-      api('/' + (film.kind || 'movie') + '/' + film.id + '/videos')
+      api(base + '/keywords'),
+      /* `language` filtre AUSSI les vidéos : demander fr-FR seul renvoie une
+         liste VIDE pour un film dont les bandes-annonces sont anglais seulement
+         (Coyote vs. Acme : 0 alors qu'il en a 23). On demande donc les langues
+         utiles, et on choisit après. */
+      api(base + '/videos', { include_video_language: LANGUES_VIDEO })
     ]);
     film.keywords = (kw.keywords || []).map(k => k.name);
     film.videos = (vids.results || []).filter(v => v.site === 'YouTube');
   } catch {
-    film.keywords = [];
-    film.videos = [];
+    film.__extra = false;   // une panne passagère ne condamne pas le film
+    film.keywords = film.keywords || [];
+    film.videos = film.videos || [];
   }
-  film.__extra = true;
 }
 
-/** Le moment : une bande-annonce d'abord, sinon un teaser, sinon un extrait. */
+/** Le moment : une bande-annonce d'abord, sinon un teaser, sinon un extrait.
+ *
+ *  On préfère le français quand il existe, mais on ne l'exige pas : beaucoup de
+ *  films n'ont AUCUNE vidéo française, et une bande-annonce anglaise vaut mieux
+ *  que pas de bande-annonce du tout. */
 function bestVideo(list) {
   const videos = list || [];
-  const pick = type => videos.find(v => v.type === type && v.official) || videos.find(v => v.type === type);
+  const pick = type => {
+    const du = videos.filter(v => v.type === type);
+    if (!du.length) return null;
+    return du.find(v => v.iso_639_1 === 'fr' && v.official)
+        || du.find(v => v.iso_639_1 === 'fr')
+        || du.find(v => v.official)
+        || du[0];
+  };
   return pick('Trailer') || pick('Teaser') || pick('Clip') || pick('Featurette') || null;
 }
 
@@ -352,10 +374,12 @@ async function fetchVideos(film) {
     return film.videos;
   }
   try {
-    const data = await api('/' + (film.kind || 'movie') + '/' + film.id + '/videos');
+    const data = await api('/' + (film.kind || 'movie') + '/' + film.id + '/videos',
+      { include_video_language: LANGUES_VIDEO });
     film.videos = (data.results || []).filter(v => v.site === 'YouTube');
   } catch {
-    film.videos = [];
+    film.__videos = false;   // on pourra réessayer
+    film.videos = film.videos || [];
   }
   return film.videos;
 }
@@ -435,10 +459,15 @@ function emojiImg(emoji, className = '') {
   return img;
 }
 
-/** Une image qui n'apparaît qu'une fois prête : sinon elle saute dans la page. */
+/** Une image qui n'apparaît qu'une fois prête : sinon elle saute dans la page.
+ *
+ *  On RETIRE `is-loading` au lieu d'ajouter un `is-loaded` : l'opacité retombe
+ *  sur celle de la classe de base, donc un film vu garde son affiche assombrie
+ *  (`.card[data-mark="seen"] .card__img`) sans qu'une seconde règle ne se
+ *  bataille avec la première. */
 function fondu(img) {
   img.classList.add('is-loading');
-  const montre = () => img.classList.add('is-loaded');
+  const montre = () => img.classList.remove('is-loading');
   if (img.complete && img.naturalWidth) montre();
   else img.addEventListener('load', montre, { once: true });
   img.addEventListener('error', montre, { once: true });
@@ -706,6 +735,27 @@ function updateProgress() {
   const ratio = max > 8 ? Math.min(1, Math.max(0, at / max)) : 0;
   progressEl.classList.toggle('is-on', max > 8);
   progressBar.style.transform = 'scaleX(' + ratio + ')';
+}
+
+/**
+ * Ce qui reste à voir de chaque côté d'une rangée de pastilles.
+ *
+ * Une pastille coupée net se lisait comme un défaut de mise en page. On éteint
+ * donc le bord qui continue et on rallume celui qui est fini : le dégradé suit
+ * le doigt au lieu de mentir. `--l` et `--r` valent 0 ou 1, le CSS fait le
+ * reste.
+ */
+function majDebordement() {
+  for (const id of ['filters', 'tris', 'sous-filtres']) {
+    const rangée = el(id);
+    if (!rangée || rangée.hidden) continue;
+    const reste = rangée.scrollWidth - rangée.clientWidth;
+    const déborde = reste > 2;
+    const àGauche = rangée.scrollLeft > 2;
+    const àDroite = rangée.scrollLeft < reste - 2;
+    rangée.style.setProperty('--l', déborde && àGauche ? '1' : '0');
+    rangée.style.setProperty('--r', déborde && àDroite ? '1' : '0');
+  }
 }
 
 /* ── Les trois présentations ──────────────────────────────────────────────── */
@@ -1175,6 +1225,7 @@ function renderTris() {
     frag.append(chip);
   }
   host.replaceChildren(frag);
+  majDebordement();
 }
 
 /* ── Les sous-genres ─────────────────────────────────────────────────────── *
@@ -1359,10 +1410,14 @@ function neufs(items) {
 /** Les sous-genres du genre choisi, s'il en a. */
 function renderSousFiltres() {
   const host = el('sous-filtres');
+  // La rangée entière disparaît, libellé compris : un libellé « Préciser » seul
+  // sur sa ligne annoncerait une rangée qui n'existe pas.
+  const rangée = el('row-sous-filtres');
   const choisis = state.genres.filter(id => SOUS_GENRES[id]);
   if (choisis.length !== 1) {
     host.hidden = true;
     host.replaceChildren();
+    if (rangée) rangée.hidden = true;
     return;
   }
 
@@ -1377,6 +1432,8 @@ function renderSousFiltres() {
   }
   host.replaceChildren(frag);
   host.hidden = false;
+  if (rangée) rangée.hidden = false;
+  majDebordement();
 }
 
 function renderFilters() {
@@ -1425,6 +1482,7 @@ function renderFilters() {
   }
 
   el('filters').replaceChildren(frag);
+  majDebordement();
 }
 
 /** Les emoji choisis, affichés DANS la barre : une seule requête, deux
@@ -1645,25 +1703,27 @@ function filmSlides(film) {
     text: film.overview || ''
   });
 
-  // 2 — qui l'a fait
-  const gens = [];
-  if (film.director) gens.push([film.kind === 'tv' ? 'Création' : 'Réalisation', film.director]);
-  if (film.cast?.length) gens.push(['Avec', film.cast.slice(0, 4).join(', ')]);
-  if (film.companies?.length) gens.push(['Production', film.companies.slice(0, 2).join(', ')]);
-  if (gens.length) slides.push({ kind: 'rows', nom: 'Équipe', rows: gens });
+  /* 2 — la fiche : qui l'a fait, ce qu'on en sait, où le voir.
+     UN SEUL groupe, et non trois. Dans une carte de 250 px, chaque groupe
+     supplémentaire ajoutait un raccourci de plus : cinq onglets ne tenaient pas
+     sur une rangée, la bande passait à la ligne et les raccourcis se lisaient
+     mal. Quatre groupes tiennent en deux rangées de deux. */
+  const fiche = [];
+  if (film.director) fiche.push([film.kind === 'tv' ? 'Création' : 'Réalisation', film.director]);
+  if (film.cast?.length) fiche.push(['Avec', film.cast.slice(0, 3).join(', ')]);
+  if (film.vote_count) fiche.push(['Note', film.vote_average.toFixed(1) + ' / 10']);
+  if (film.countries?.length) fiche.push(['Pays', film.countries.join(', ')]);
+  if (film.providers?.length) fiche.push(['Où le voir', film.providers.join(', ')]);
+  if (film.companies?.length) fiche.push(['Production', film.companies.slice(0, 1).join(', ')]);
+  if (film.budget) fiche.push(['Budget', money(film.budget)]);
+  if (film.revenue) fiche.push(['Recettes', money(film.revenue)]);
+  /* Six lignes au maximum : la carte du survol n'a pas d'ascenseur, et au-delà
+     la dernière ligne était coupée en deux — un texte tranché net ne se lit pas
+     comme « il y en a plus », il se lit comme un bug. La fiche, elle, garde
+     tout. */
+  if (fiche.length) slides.push({ kind: 'rows', nom: 'Fiche', rows: fiche.slice(0, 6) });
 
-  // 3 — ce qu'on en sait
-  const faits = [];
-  if (film.countries?.length) faits.push(['Pays', film.countries.join(', ')]);
-  if (film.vote_count) faits.push(['Note', film.vote_average.toFixed(1) + ' / 10']);
-  if (film.budget) faits.push(['Budget', money(film.budget)]);
-  if (film.revenue) faits.push(['Recettes', money(film.revenue)]);
-  if (faits.length) slides.push({ kind: 'rows', nom: 'Chiffres', rows: faits });
-
-  // 4 — où le voir
-  if (film.providers?.length) slides.push({ kind: 'rows', nom: 'Où le voir', rows: [['', film.providers.join(', ')]] });
-
-  // 5 — le moment, toujours en dernier
+  // 3 — le moment, toujours en dernier
   const moment = momentOf(film);
   if (moment) slides.push({ kind: 'moment', nom: 'Bande-annonce', key: moment.key });
 
@@ -1908,7 +1968,9 @@ function bindPeek(card, film) {
       card.classList.add('is-peeking');
       showSlide(card, film, 0);
       // Le détail ET les vidéos : sans elles, le dernier groupe n'existe pas.
-      if ((!film.__detail || !film.__videos) && state.live) {
+      // Le drapeau est `__extra` — c'est celui que pose fetchExtras. Tester
+      // `__videos` ici ne servait à rien : personne ne le pose sur ce chemin.
+      if ((!film.__detail || !film.__extra) && state.live) {
         await Promise.all([fetchDetail(film), fetchExtras(film)]);
         /* Le détail arrive et les groupes changent. On refait le diaporama,
            mais on retrouve le groupe où on était PAR SON NOM : la
@@ -2789,6 +2851,16 @@ function start() {
       loadMore();
     }
   }, { passive: true });
+
+  /* Les bords des rangées de pastilles s'éteignent au fur et à mesure qu'on les
+     fait défiler. Sur `scroll` la rangée elle-même, et sur redimensionnement :
+     c'est la largeur qui décide de ce qui déborde. */
+  for (const id of ['filters', 'tris', 'sous-filtres']) {
+    const rangée = el(id);
+    if (rangée) rangée.addEventListener('scroll', majDebordement, { passive: true });
+  }
+  addEventListener('resize', majDebordement, { passive: true });
+
   document.addEventListener('keydown', event => {
     if (event.key === 'Escape') {
       if (!mirrorEl.hidden) { closeMirror(); return; }

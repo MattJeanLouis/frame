@@ -250,7 +250,7 @@ img { display: block; }
 .card-stage__still.is-loading,
 .peek__poster.is-loading { opacity: 0; }
 
-.card__img, .reel__still, .card-stage__still {
+.card__img, .reel__still, .card-stage__still, .peek__poster {
   transition: opacity 340ms var(--e-quart);
 }
 
@@ -537,24 +537,43 @@ img { display: block; }
    L'iframe est agrandie deux fois et recentrée, de sorte que le titre et le
    logo de YouTube tombent hors du cadre. Ce n'est pas un lecteur : c'est une
    lumière dans la salle. */
-.card-stage { position: absolute; inset: 0; }
+.card-stage { position: absolute; inset: 0; container-type: size; }
 
-.card-stage iframe {
+/* ── Le cadrage des vidéos, en un seul endroit ───────────────────────────────
+   Une iframe YouTube n'est pas une image : pas d'`object-fit`. On la dimensionne
+   donc à la main, en 16:9, sur la boîte qui la contient.
+
+   Les unités de conteneur (`cqw`/`cqh`) comparent enfin les deux axes, ce que
+   les pourcentages ne savent pas faire. `min()` inscrit la vidéo ENTIÈRE dans la
+   boîte, `max()` la fait COUVRIR la boîte. Dans les deux cas le rapport de
+   l'iframe est exactement celui de la vidéo : le lecteur n'a plus aucune raison
+   de letterboxer, et on ne coupe que ce que la boîte impose.
+
+   Avant : 400 % et un recadrage de 150 %. On ne voyait qu'un quart de la largeur
+   de l'image, agrandi — d'où les cadrages coupés et le flou. */
+.card-stage iframe,
+.peek__moment iframe {
   position: absolute;
-  /* Mesuré : à 200 %, la bande vidéo faisait 743 px dans un cadre de 848 —
-     105 px de noir. Même traitement qu'au mode vertical. */
-  top: -150%;
-  left: -150%;
-  width: 400%;
-  height: 400%;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  /* 16/9 inscrit : 177.78 % de la hauteur, 56.25 % de la largeur. */
+  width: min(100cqw, 177.78cqh);
+  height: min(56.25cqw, 100cqh);
   border: 0;
   pointer-events: none;
+  background: #000;
+}
+
+.card-stage iframe {
   opacity: 0;
   transition: opacity 900ms var(--e-out);
 }
 .card-stage iframe.is-live { opacity: 1; }
 
-/* L'affiche reste dessous : si le moment ne vient pas, on ne voit pas de trou. */
+/* L'affiche reste dessous : si le moment ne vient pas, on ne voit pas de trou.
+   Quand la vidéo joue, elle devient le fond de la salle — floutée, éteinte —
+   pour que les bandes laissées par le 16:9 ne soient pas du noir mort. */
 .card-stage__still {
   position: absolute;
   inset: 0;
@@ -562,6 +581,10 @@ img { display: block; }
   height: 100%;
   object-fit: cover;
   object-position: center 22%;
+}
+.card-stage:has(iframe.is-live) .card-stage__still {
+  filter: blur(22px) brightness(0.35) saturate(1.2);
+  transform: scale(1.15);
 }
 
 /* Le voile de la salle : le moment éclaire, il n'éblouit pas. */
@@ -915,6 +938,10 @@ img { display: block; }
   overflow: hidden;
   border-radius: 4px;
   background: var(--c-surface);
+  /* Hors du mode vertical la scène n'avait aucune hauteur : l'affiche est en
+     position absolue, donc elle ne comptait pas. Le 16:9 lui en donne une. */
+  aspect-ratio: 16 / 9;
+  container-type: size;
 }
 
 .reel__still {
@@ -925,11 +952,16 @@ img { display: block; }
   object-position: center 30%;
 }
 
-/* Le chrome de YouTube tombe hors cadre : l'iframe est doublée et recentrée. */
+/* Le chrome de YouTube tombe hors cadre. Ici on COUVRE — la scène verticale est
+   plein cadre — donc `max()` et non `min()` : le minimum des deux échelles
+   laisserait des bandes. */
 .reel__stage iframe {
   position: absolute;
-  top: -50%; left: -50%;
-  width: 200%; height: 200%;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: max(100cqw, 177.78cqh);
+  height: max(56.25cqw, 100cqh);
   border: 0;
   pointer-events: none;
   opacity: 0;
@@ -1107,19 +1139,15 @@ img { display: block; }
   position: absolute;
   inset: 0;
   border-radius: 0;
+  /* `inset: 0` décide de la taille : le 16:9 de la règle commune l'emportait et
+     réduisait la scène verticale à une bande de 219 px au lieu de tout l'écran.
+     Les deux axes sont déjà contraints ici, le rapport n'a rien à y faire. */
+  aspect-ratio: auto;
 }
 .mode-reel .reel__still { object-position: center 35%; }
 
-/* Une vidéo 16:9 ne remplit pas un cadre portrait avec un simple doublement :
-   le lecteur letterboxe, et il resterait des bandes noires. À 400 % et
-   recentrée de 150 %, la bande vidéo couvre tout le cadre tant que celui-ci
-   reste moins haut que 2,25 fois sa largeur — vrai sur tous les téléphones. */
-.mode-reel .reel__stage iframe {
-  top: -150%;
-  left: -150%;
-  width: 400%;
-  height: 400%;
-}
+/* La scène verticale occupe tout l'écran : la règle commune `max()` s'en
+   charge déjà, il n'y a plus de 400 % à retoucher ici. */
 
 /* Vu / à voir, dans le fil : on marque sans ouvrir la fiche. */
 .reel__marks {
@@ -1366,7 +1394,7 @@ img { display: block; }
   z-index: 3;   /* au-dessus du mur, sinon le panneau tombe derrière */
   flex: 0 0 auto;
   display: grid;
-  gap: 8px;
+  gap: 7px;
   padding: 2px 16px 10px;
 }
 
@@ -1380,14 +1408,71 @@ img { display: block; }
   display: flex;
   align-items: center;
   gap: 9px;
-  height: 42px;
-  padding: 0 8px 0 13px;
+  height: 48px;
+  /* Elle ne s'étire pas sur toute la largeur : à 1400 px, une barre de
+     recherche d'un mètre de long n'est plus une barre, c'est un couloir. */
+  width: 100%;
+  max-width: 620px;
+  padding: 0 4px 0 14px;
   border: 1px solid var(--c-line);
   border-radius: 999px;
   background: var(--c-surface);
   transition: border-color var(--d-base) var(--e-out);
 }
 .search:focus-within { border-color: var(--c-accent); }
+
+/* Les commandes de droite forment UN groupe : sans lui, l'emoji flottait seul
+   au milieu du champ, loin du bouton d'effacement. */
+.search__tools {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+  padding-left: 5px;
+  border-left: 1px solid var(--c-line);
+}
+/* 44 px, comme partout ailleurs : dans la barre, ces deux-là se touchaient du
+   bout du pouce sans jamais offrir la bonne cible. */
+.search__tools .glyph--sm { width: 44px; height: 44px; }
+.search__tools .glyph:hover { background: var(--c-raised); }
+
+/* ── Les rangées de pastilles ────────────────────────────────────────────────
+   Un libellé fixe à gauche, des pastilles qui défilent à droite. Le libellé ne
+   défile pas : on sait toujours ce qu'on regarde. Sans lui, trois rangées de
+   pastilles identiques se lisaient comme une seule bouillie. */
+.row {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+.row[hidden] { display: none; }
+.row__label {
+  font-family: var(--ff-text);
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: color-mix(in oklab, var(--c-text-dim) 85%, transparent);
+}
+#row-tris {
+  padding-top: 7px;
+  border-top: 1px solid var(--c-line);
+}
+
+/* Le débordement se voit : une pastille coupée net se lisait comme un bug, pas
+   comme une invitation à faire défiler. `--l` et `--r` valent 0 ou 1 selon ce
+   qui reste à voir de chaque côté — c'est le JS qui les pose. */
+#filters, #tris, #sous-filtres {
+  --fg: 30px;
+  --l: 0;
+  --r: 0;
+  mask-image: linear-gradient(90deg,
+    transparent 0,
+    #000 calc(var(--fg) * var(--l)),
+    #000 calc(100% - var(--fg) * var(--r)),
+    transparent 100%);
+}
 
 /* La loupe est une forme : un cercle et un trait, rien à écrire. */
 .search__icon {
@@ -1467,9 +1552,6 @@ img { display: block; }
   gap: 5px;
   overflow-x: auto;
   scrollbar-width: none;
-  padding-top: 6px;
-  margin-top: 6px;
-  border-top: 1px solid var(--c-line);
 }
 #tris::-webkit-scrollbar { display: none; }
 #tris .filter { height: 30px; font-size: 10px; }
@@ -1487,9 +1569,6 @@ img { display: block; }
   gap: 5px;
   overflow-x: auto;
   scrollbar-width: none;
-  padding-top: 6px;
-  margin-top: 6px;
-  border-top: 1px solid var(--c-line);
 }
 #sous-filtres::-webkit-scrollbar { display: none; }
 @keyframes rangee-in { from { opacity: 0; transform: translateY(-5px); } }
@@ -1534,13 +1613,16 @@ img { display: block; }
 .filter[aria-pressed="true"] img { opacity: 1; }
 
 /* Le trait qui sépare les familles de filtres. */
+/* Le trait qui sépare « Tout / Films / Séries » des genres. À 18 px et en
+   `--c-line`, il ne se voyait pas : les types et les genres se lisaient comme
+   une seule famille. */
 .filter-sep {
   flex: 0 0 auto;
   align-self: center;
   width: 1px;
-  height: 18px;
-  margin: 0 3px;
-  background: var(--c-line);
+  height: 22px;
+  margin: 0 7px;
+  background: var(--c-line-strong);
 }
 
 /* ── Le survol : un diaporama par groupes ────────────────────────────────── *
@@ -1574,42 +1656,73 @@ img { display: block; }
   padding: 11px 11px 10px;
 }
 
-/* En haut : ce qu'on veut faire du film, d'un seul geste. */
+/* En haut : ce qu'on veut faire du film, d'un seul geste.
+   Le voile est FRANC et non un dégradé qui s'efface tout de suite : les affiches
+   portent presque toujours du texte clair en haut — les noms au-dessus du titre
+   — et les icônes s'y perdaient complètement. */
 .peek__actions {
   flex: 0 0 auto;
   display: flex;
-  gap: 3px;
+  gap: 4px;
   margin: -11px -11px 9px;
-  padding: 8px 11px 7px;
-  background: linear-gradient(rgba(6, 8, 13, 0.92), transparent);
+  padding: 9px 11px;
+  background: linear-gradient(
+    rgba(6, 8, 13, 0.95) 0%,
+    rgba(6, 8, 13, 0.88) 55%,
+    rgba(6, 8, 13, 0.55) 82%,
+    transparent 100%
+  );
 }
+/* Cinq boutons dans la largeur de la carte : ils se la partagent au lieu d'une
+   taille fixe qui laissait un trou au milieu. 44 px de haut au doigt, 38 px à
+   l'œil — la zone sensible dépasse le dessin, jamais l'inverse. */
 .peek__act {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
   display: grid;
   place-items: center;
-  width: 34px;
-  height: 34px;
+  height: 38px;
   padding: 0;
   border: 1px solid transparent;
   border-radius: 9px;
-  background: rgba(242, 238, 230, 0.07);
+  background: rgba(242, 238, 230, 0.1);
   cursor: pointer;
+  transition: background var(--d-fast) var(--e-out), border-color var(--d-fast) var(--e-out);
 }
-.peek__act img { width: 18px; height: 18px; opacity: 0.72; transition: opacity var(--d-fast) var(--e-out); }
-.peek__act:hover { background: rgba(242, 238, 230, 0.14); }
+.peek__act::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -3px;
+  bottom: -3px;
+}
+.peek__act img { width: 18px; height: 18px; opacity: 0.8; transition: opacity var(--d-fast) var(--e-out); }
+.peek__act:hover { background: rgba(242, 238, 230, 0.18); }
 .peek__act:hover img { opacity: 1; }
 .peek__act[aria-pressed="true"] {
   border-color: var(--c-accent);
-  background: color-mix(in oklab, var(--c-accent) 20%, transparent);
+  background: color-mix(in oklab, var(--c-accent) 26%, transparent);
 }
 .peek__act[aria-pressed="true"] img { opacity: 1; }
-/* Les deux derniers ne sont pas des états : un trait les sépare. */
-.peek__act[data-act="search"] { margin-left: auto; }
+/* Les deux derniers ne sont pas des états : un filet les sépare, au lieu d'un
+   trou qui ressemblait à un bug de mise en page. */
+.peek__act[data-act="search"] { margin-left: 8px; }
+.peek__act[data-act="search"]::before {
+  content: "";
+  position: absolute;
+  left: -6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 1px;
+  height: 20px;
+  background: var(--c-line-strong);
+}
 
 /* Sur l'affiche, la couche s'efface : on voit le film, et les actions. */
 .card.is-affiche .card__peek { background: transparent; backdrop-filter: none; }
 .card.is-affiche .peek__body { display: none; }
-.card.is-affiche .peek__actions { background: linear-gradient(rgba(6, 8, 13, 0.86), transparent); }
-.card.is-affiche .peek__jump { background: linear-gradient(transparent, rgba(6, 8, 13, 0.86)); }
 
 /* La barre de segments : où on en est, et le temps qu'il reste. */
 .peek__bar { display: flex; gap: 3px; flex: 0 0 auto; margin: -7px 0 4px; }
@@ -1683,55 +1796,80 @@ img { display: block; }
 .peek__slide .text__value { font-size: var(--fs-2xs); line-height: 1.4; }
 .peek__slide .text__row--seul { grid-template-columns: minmax(0, 1fr); }
 
-/* Le moment : plein cadre, sans texte autour. */
+/* Le moment : la scène EST en 16:9, donc la vidéo la remplit exactement — pas
+   une bande noire. Le reste du groupe montre l'affiche en dessous. */
 .peek__moment {
   position: relative;
-  flex: 1 1 auto;
-  min-height: 0;
+  flex: 0 0 auto;
+  width: 100%;
+  aspect-ratio: 16 / 9;
   overflow: hidden;
   border-radius: 3px;
   background: #000;
-}
-.peek__moment iframe {
-  position: absolute;
-  /* Même cadrage qu'au mode vertical : une vidéo 16:9 dans une carte portrait
-     laisserait sinon des bandes noires, le lecteur letterboxant à l'intérieur
-     de l'iframe. */
-  top: -150%;
-  left: -150%;
-  width: 400%;
-  height: 400%;
-  border: 0;
-  pointer-events: none;
+  container-type: size;
 }
 
-/* Les raccourcis nommés : discrets, mais on lit où on va. */
+/* Les raccourcis nommés : discrets, mais on lit où on va.
+   `margin-top: auto` les colle AU BAS de la carte quel que soit le groupe
+   affiché. Avant, le groupe « Affiche » masquait le corps : les raccourcis
+   remontaient alors sous les icônes et semblaient sauter d'un survol à l'autre.
+   Même voile franc que les actions, pour la même raison. */
 .peek__jump {
   flex: 0 0 auto;
-  margin: 9px -11px -10px;
-  padding: 8px 11px 10px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin-top: 9px;
+  margin: auto -11px -10px;
+  padding: 10px 11px 11px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(78px, 1fr));
+  gap: 8px 4px;
+  background: linear-gradient(
+    transparent 0%,
+    rgba(6, 8, 13, 0.55) 22%,
+    rgba(6, 8, 13, 0.9) 48%,
+    rgba(6, 8, 13, 0.95) 100%
+  );
 }
+/* Quatre groupes se rangent DEUX PAR DEUX. Laissée à `auto-fit`, la grille en
+   plaçait trois sur la première rangée et laissait « Bande-annonce » seule sur
+   la seconde — un raccourci orphelin, exactement ce qu'on veut éviter. */
+.peek__jump:has(.peek__tab:nth-child(4)) {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+/* 36 px à l'œil, 44 au doigt : la zone sensible dépasse de 4 px en haut et en
+   bas, exactement la taille du trou entre deux rangées — elles se touchent
+   sans se recouvrir. */
 .peek__tab {
-  padding: 4px 8px;
+  position: relative;
+  display: grid;
+  place-items: center;
+  height: 36px;
+  padding: 0 8px;
   border: 1px solid var(--c-line);
-  border-radius: 999px;
-  background: transparent;
+  border-radius: 9px;
+  background: rgba(6, 8, 13, 0.55);
   color: var(--c-text-dim);
   font-family: var(--ff-text);
-  font-size: 8.5px;
+  font-size: 9px;
   font-weight: 600;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.02em;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   cursor: pointer;
+  transition: background var(--d-fast) var(--e-out), border-color var(--d-fast) var(--e-out),
+              color var(--d-fast) var(--e-out);
 }
-.peek__tab:hover { border-color: var(--c-line-strong); color: var(--c-text); }
+.peek__tab::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -4px;
+  bottom: -4px;
+}
+.peek__tab:hover { border-color: var(--c-line-strong); color: var(--c-text); background: rgba(6, 8, 13, 0.75); }
 .peek__tab[aria-current="true"] {
   border-color: var(--c-accent);
-  background: color-mix(in oklab, var(--c-accent) 16%, transparent);
+  background: color-mix(in oklab, var(--c-accent) 22%, rgba(6, 8, 13, 0.9));
   color: var(--c-text);
 }
 
