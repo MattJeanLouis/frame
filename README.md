@@ -23,6 +23,24 @@ Deux variantes utiles :
 - http://localhost:8090/?mode=liste — la même application avec une grille de chips
   au lieu de la toile, pour comparer les deux à l'aveugle.
 
+## Une soirée à plusieurs
+
+Pour choisir un film à plusieurs : l'hôte lance le serveur, les autres ouvrent
+l'adresse affichée sur leur téléphone, et tout le monde vote en privé sur la même
+liste de films. Les votes se retournent d'un coup, et le film que tout le monde
+veut voir l'emporte.
+
+```bash
+npm run room
+```
+
+Le serveur affiche deux adresses : la locale, et celle du réseau Wi-Fi à donner
+aux autres. Rien ne sort de la maison — pas de compte, pas de service tiers. Les
+autres entrent le code à six signes affiché dans l'app, ou ouvrent directement le
+lien d'invitation.
+
+Le serveur est en Node natif : aucune dépendance à installer.
+
 ## Obtenir une clé TMDB
 
 FRAME va chercher les films chez [TMDB](https://www.themoviedb.org/). La clé est

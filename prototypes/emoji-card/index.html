@@ -16,6 +16,7 @@
 <link rel="stylesheet" href="card.css">
 <link rel="stylesheet" href="direction.css">
 <link rel="stylesheet" href="catalogue.css">
+<link rel="stylesheet" href="soiree.css">
 <script src="../../config.local.js" onerror="window.FRAME_CONFIG = window.FRAME_CONFIG || {};"></script>
 </head>
 <body>
@@ -25,6 +26,9 @@
   <header id="bar">
     <a class="brand" href="./" aria-label="FRAME, accueil"><span class="brand__frame" aria-hidden="true"></span>FRAME<span class="brand__edition">CINÉMATHÈQUE PERSONNELLE</span></a>
     <div id="modes" role="tablist" aria-label="Présentation"></div>
+    <button class="glyph" id="btn-soiree" type="button" aria-label="Soirée : choisir un film à plusieurs">
+      <span>Soirée</span>
+    </button>
     <button class="glyph" id="btn-mirror" type="button" aria-label="Ton miroir">
       <span>Mon miroir</span>
     </button>
@@ -117,6 +121,9 @@
 
 <!-- Le miroir : ce que tu ajoutes, ce que tu retires. Jamais de chiffres. -->
 <section id="mirror" hidden aria-label="Ton miroir"></section>
+
+<!-- La soirée : on choisit un film à plusieurs, chacun votant en privé. -->
+<section id="soiree" hidden aria-label="Soirée"></section>
 
 <button type="button" id="filter-backdrop" aria-label="Fermer les filtres" hidden></button>
 <div id="status" role="status" class="sr-only"></div>

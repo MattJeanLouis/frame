@@ -98,40 +98,74 @@ de pagination.
 
 ---
 
-## 4. La suite : les rooms
+## 4. Le mode Soirée — fait
 
-**État : non commencées.** C'est la prochaine étape.
+On crée une soirée, on donne le code, et on choisit un film ensemble.
 
-Le mot n'est défini nulle part dans le dépôt — ni dans les specs, ni dans le
-README, ni dans `.impeccable.md`. L'intention retenue est celle-ci : des espaces
-partagés, où plusieurs personnes explorent et gardent des films ensemble, là où
-FRAME est aujourd'hui strictement personnel (aucun compte, aucune donnée
-envoyée, tout en `localStorage`).
+### Le jeu
 
-**Cette définition doit être arrêtée avec Matt avant d'écrire une ligne**, parce
-que « rooms » peut vouloir dire au moins trois choses très différentes :
+1. **Le salon.** L'hôte crée la soirée et reçoit un code de six signes. Les autres
+   entrent le code, ou ouvrent le lien d'invitation. On est huit au maximum : au-delà
+   on ne s'entend plus, et le deck devient interminable.
+2. **La manche.** L'hôte propose les films — par défaut, les douze premiers du
+   catalogue **tel qu'il est filtré à cet instant**. Chacun se prononce en privé sur
+   la même liste : *Oui*, *Peut-être*, *Non*.
+3. **La révélation.** Quand plus personne n'a rien à voter, les votes se retournent
+   d'eux-mêmes, deux secondes après le dernier. On voit alors qui a dit quoi, et le
+   classement.
 
-1. **Un salon de visionnage** — on décide à plusieurs ce qu'on regarde ce soir.
-2. **Une liste partagée** — une watchlist commune, qui se remplit à plusieurs.
-3. **Un espace de recommandation** — on découvre ce que des proches ont aimé.
+**La règle qui fait le jeu : l'unanimité passe avant le score.** Un film que tout le
+monde veut voir bat un film que trois personnes adorent et qu'une refuse — on cherche
+ce qu'on regarde ensemble, pas ce qui divise.
 
-Les questions à trancher, dans l'ordre :
+**Le secret est une règle du serveur, pas une politesse de l'interface.** Pendant la
+manche, le serveur n'envoie à chaque joueur que ses propres votes, plus l'avancement
+des autres en nombre. Le classement n'est pas même calculé avant la révélation. Vérifié
+côté protocole : un joueur inconnu reçoit une liste de votes vide.
 
-- **Qui héberge ?** FRAME est un site statique sans serveur. Des rooms
-  supposent un état partagé : soit un service, soit un encodage dans le lien
-  (comme le partage de tableau du prototype 1), soit un stockage tiers.
-  C'est la question qui décide de toutes les autres.
-- **Y a-t-il des comptes ?** `CLAUDE.md` dit « pas d'inconnus, pas de
-  modération, pas de compte ». Des rooms entre proches n'exigent pas de comptes ;
-  des rooms publiques, si.
-- **Que partage-t-on ?** Une liste, des avis, ou seulement un lien de recherche ?
-  Le miroir est aujourd'hui intime — « il ne s'adresse qu'à une personne ».
-- **Qu'est-ce qui reste privé ?** Les états et les commentaires sont
-  l'équivalent d'un journal. Il faut décider ce qui sort et ce qui ne sort pas,
-  et le dire dans l'interface, pas seulement dans le code.
+### Comment ça tourne
 
-Tant que ces quatre points ne sont pas tranchés, toute implémentation serait une
-supposition.
+```bash
+npm run room            # port 8092, l'adresse réseau s'affiche
+```
+
+L'hôte lance le serveur ; les autres ouvrent l'adresse affichée sur leur téléphone, sur
+le même Wi-Fi. **Rien ne sort de la maison** : pas de compte, pas de service tiers, pas
+d'autre clé que TMDB. Le serveur est en Node natif, sans une seule dépendance.
+
+Le CORS est **ouvert délibérément** : sans lui, une page servie par `npm run serve`
+(8090) ne pourrait pas parler au serveur de soirée (8092) — deux ports, deux origines —
+et il faudrait choisir entre le direct sur le catalogue et la soirée. Le serveur n'est
+joignable que sur le réseau local, et le seul secret est le code de la room ; ce que
+l'ouverture ajoute est borné par un plafond de 200 rooms.
+
+| Fichier | Rôle |
+|---|---|
+| `room/rooms.js` | les règles du jeu — pures, sans réseau ni horloge implicite |
+| `room/server.mjs` | HTTP + SSE + service des fichiers |
+| `prototypes/emoji-card/soiree.js` | l'interface |
+| `tests/room.test.mjs` | 33 tests sur les règles |
+
+### Ce qui est vérifié
+
+Avec **deux navigateurs distincts**, deux profils, deux stockages — pas un seul client
+déguisé : création, code faux refusé et expliqué, code trop court refusé sur place,
+arrivée d'un joueur vue en direct sans recharger, lancement de la manche, vote des deux
+côtés, révélation automatique, classement et unanimité, **secret des votes tenu**, arrivée
+en cours de partie, reconnexion sans doublon, zéro exception. Plus le téléphone
+390 × 844 : aucun débordement, aucune cible sous 44 px.
+
+### Ce qui reste ouvert
+
+- **Pas de relais en ligne.** Le jeu suppose le même réseau. Le client ne connaît que
+  l'adresse de base de l'API : brancher un relais plus tard ne demandera pas de réécrire
+  le jeu, mais ce relais n'existe pas.
+- **Un seul jeu.** « La Sélection » est le jeu ; rien n'est prévu pour en changer.
+- **Pas de manches enchaînées automatiquement** : l'hôte relance à la main.
+- **L'hôte est un joueur comme un autre** — s'il part, la main passe au plus ancien,
+  mais personne n'est prévenu que le rôle a changé.
+- **Rien n'est conservé après la soirée.** Le résultat d'une manche ne rejoint pas le
+  catalogue, et le gagnant ne peut pas être marqué « à voir » d'un geste.
 
 ---
 
@@ -148,7 +182,12 @@ node verif-lecteur.mjs            # pause, ±10 s, vitesse, position
 node verif-coherence.mjs          # courses de recherche, nom de collection
 node verif-dispo.mjs              # disponibilités par pays
 node verif-sagas-dispo.mjs        # sagas, téléphone
+node verif-soiree.mjs             # le mode Soirée, à DEUX navigateurs
 ```
+
+`verif-soiree.mjs` a besoin de deux Chrome sur des ports de débogage différents (9222 et
+9223) et de profils séparés : sans deux stockages distincts, on ne teste qu'un joueur qui
+se parle à lui-même. Le serveur de soirée doit tourner (`npm run room`).
 
 Deux pièges rencontrés, à garder en tête :
 

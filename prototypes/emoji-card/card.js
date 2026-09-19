@@ -16,6 +16,7 @@ import { createClient, detectAuth, API_BASE } from '../../src/tmdb.js';
 import { createDemoClient, DEMO_POOLS } from '../../src/demo.js';
 import { loadCredential, getKeywordCache, setKeywordId } from '../../src/storage.js';
 import { selectMovies } from '../../src/engine.js';
+import { initRoom, ouvrirRoom, fermerRoom } from './soiree.js';
 
 const STORE_KEY = 'frame.v2';
 /* Les six états, sur un seul axe : ce que tu dis d'un film, en un mot, d'une
@@ -78,6 +79,7 @@ const el = id => document.getElementById(id);
 const appEl = el('app');
 const wallEl = el('wall');
 const cardEl_ = el('card');
+const soireeEl = el('soiree');
 const mirrorEl = el('mirror');
 const statusEl = el('status');
 const progressEl = el('progress');
@@ -3645,6 +3647,20 @@ function start() {
   state.client = state.live ? createClient({ credential: state.credential }) : createDemoClient();
 
   el('btn-mirror').addEventListener('click', openMirror);
+
+  /* Le mode Soirée. Il ne connaît du catalogue que ce qu'on lui donne : les
+     films affichés au moment où on ouvre la soirée deviennent le deck proposé.
+     Le jeu ne dépend donc d'aucune règle de recherche, et la recherche n'a rien
+     à savoir du jeu. */
+  initRoom({
+    films: () => state.wall.filter(f => f && f.poster_path),
+    annoncer: message => announce(message),
+    ouvrir: () => { if (!cardEl_.hidden) closeCard(); if (!mirrorEl.hidden) closeMirror(); },
+    fermer: () => el('btn-soiree')?.focus()
+  });
+  el('btn-soiree').addEventListener('click', () => {
+    if (soireeEl.hidden) ouvrirRoom(); else fermerRoom();
+  });
   wallEl.addEventListener('scroll', () => {
     updateProgress();
     // À 900 px du bas, on prépare la suite avant qu'on l'atteigne.

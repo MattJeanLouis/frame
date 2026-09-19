@@ -1,0 +1,304 @@
+/* ── Le mode Soirée ──────────────────────────────────────────────────────────
+   Un écran par phase, plein cadre : pendant une partie, le catalogue n'a plus
+   rien à dire. On reste sur les jetons existants — encre, ivoire, ambre — et on
+   n'ajoute que ce que le jeu réclame : un code qu'on lit de loin, trois boutons
+   de vote qu'on touche sans viser, et un classement qui se lit d'un coup. */
+
+body.soiree-ouverte { overflow: hidden; }
+
+#soiree {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: color-mix(in oklab, var(--c-bg) 94%, black);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+#soiree[hidden] { display: none; }
+
+.soiree {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 0 clamp(16px, 4vw, 32px) 48px;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* ── La barre du haut ─────────────────────────────────────────────────────── */
+
+.soiree__barre-haute {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 0 12px;
+  background: linear-gradient(var(--c-bg) 70%, transparent);
+}
+.soiree__marque {
+  font: 700 11px var(--ff-display);
+  letter-spacing: 0.22em;
+  color: var(--c-accent);
+  margin-right: auto;
+}
+.soiree__fermer {
+  width: 44px; height: 44px;
+  display: grid; place-items: center;
+  border: 1px solid #f1ede41c;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--c-text-dim);
+  font-size: 15px;
+  cursor: pointer;
+}
+.soiree__fermer:hover { color: var(--c-text); background: var(--c-surface); }
+
+.soiree__lien {
+  min-height: 44px;
+  padding: 0 10px;
+  border: 0;
+  background: transparent;
+  color: var(--c-text-dim);
+  font: 12px var(--ff-text);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.soiree__lien:hover { color: var(--c-text); }
+.soiree__lien:disabled { opacity: 0.35; cursor: default; text-decoration: none; }
+.soiree__lien--discret { font-size: 11px; }
+
+/* ── Les blocs communs ────────────────────────────────────────────────────── */
+
+.soiree__etiquette {
+  font: 600 9.5px var(--ff-text);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--c-text-dim);
+}
+.soiree__titre-section {
+  font: 500 15px var(--ff-text);
+  margin: 4px 0 0;
+  color: var(--c-text);
+}
+.soiree__note {
+  font: 12px/1.5 var(--ff-text);
+  color: var(--c-text-dim);
+  margin: 4px 0;
+}
+.soiree__intro {
+  font: 15px/1.55 var(--ff-text);
+  color: var(--c-text);
+  margin: 8px 0 4px;
+  max-width: 46ch;
+}
+
+.soiree__bouton {
+  min-height: 48px;
+  padding: 0 20px;
+  border: 1px solid #f1ede424;
+  border-radius: 4px;
+  background: var(--c-surface);
+  color: var(--c-text);
+  font: 500 14px var(--ff-text);
+  cursor: pointer;
+}
+.soiree__bouton:hover:not(:disabled) { background: var(--c-raised); }
+.soiree__bouton:disabled { opacity: 0.4; cursor: default; }
+.soiree__bouton--fort {
+  background: var(--c-accent);
+  border-color: var(--c-accent);
+  color: #17130a;
+  font-weight: 600;
+}
+.soiree__bouton--fort:hover:not(:disabled) { background: color-mix(in oklab, var(--c-accent) 88%, white); }
+.soiree__bouton--petit { min-height: 40px; padding: 0 14px; font-size: 12px; }
+
+.soiree__alerte {
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in oklab, #e07a5f 60%, transparent);
+  border-radius: 4px;
+  background: color-mix(in oklab, #e07a5f 14%, transparent);
+  color: var(--c-text);
+  font: 13px/1.5 var(--ff-text);
+}
+
+/* ── L'accueil ────────────────────────────────────────────────────────────── */
+
+.soiree__accueil { display: flex; flex-direction: column; gap: 14px; align-items: stretch; max-width: 420px; }
+.soiree__champ { display: flex; flex-direction: column; gap: 6px; font: 12px var(--ff-text); color: var(--c-text-dim); }
+.soiree__champ input {
+  min-height: 48px;
+  padding: 0 12px;
+  border: 1px solid #f1ede424;
+  border-radius: 4px;
+  background: var(--c-surface);
+  color: var(--c-text);
+  font: 15px var(--ff-text);
+}
+.soiree__champ input:focus { outline: 2px solid var(--c-accent); outline-offset: 1px; }
+.soiree__code-champ {
+  font: 600 22px/1 var(--ff-display) !important;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+}
+.soiree__ou { text-align: center; color: var(--c-text-dim); font: 12px var(--ff-text); margin: 2px 0; }
+.soiree__reglages { margin-top: 12px; font: 12px var(--ff-text); color: var(--c-text-dim); }
+.soiree__reglages summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; }
+.soiree__reglages .soiree__champ { margin-top: 8px; }
+
+/* ── Le salon ─────────────────────────────────────────────────────────────── */
+
+.soiree__lobby, .soiree__deck { display: flex; flex-direction: column; gap: 10px; }
+.soiree__code-bloc {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 20px;
+  border: 1px solid #f1ede41c;
+  border-radius: 6px;
+  background: var(--c-surface);
+  align-items: flex-start;
+}
+.soiree__code {
+  font: 700 clamp(38px, 9vw, 56px)/1 var(--ff-display);
+  letter-spacing: 0.14em;
+  color: var(--c-accent);
+}
+.soiree__joueurs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.soiree__joueurs li {
+  display: flex; align-items: center; gap: 10px;
+  padding: 11px 2px;
+  border-bottom: 1px solid #f1ede412;
+  font: 14px var(--ff-text);
+}
+.soiree__point { width: 7px; height: 7px; border-radius: 50%; background: var(--c-accent); flex: 0 0 auto; }
+.soiree__role {
+  font: 600 9.5px var(--ff-text);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--c-text-dim);
+  font-style: normal;
+}
+.soiree__deck { margin-top: 8px; padding-top: 14px; border-top: 1px solid #f1ede41c; }
+
+/* ── La manche ────────────────────────────────────────────────────────────── */
+
+.soiree__manche { display: flex; flex-direction: column; gap: 16px; }
+.soiree__progression { display: flex; align-items: center; gap: 12px; }
+.soiree__compte { font: 600 12px var(--ff-text); color: var(--c-text-dim); font-variant-numeric: tabular-nums; }
+.soiree__barre { flex: 1; height: 3px; background: #f1ede41c; border-radius: 2px; overflow: hidden; }
+.soiree__barre i { display: block; height: 100%; background: var(--c-accent); transform-origin: left center; transition: transform 260ms cubic-bezier(0.16, 1, 0.3, 1); }
+
+.soiree__carte {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--c-surface);
+}
+.soiree__affiche {
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+  display: block;
+  background: var(--c-raised);
+}
+.soiree__carte .soiree__affiche { max-height: 46vh; object-position: center 20%; }
+.soiree__affiche--vide { aspect-ratio: 2 / 3; }
+.soiree__infos { padding: 0 16px 16px; display: flex; flex-direction: column; gap: 4px; }
+.soiree__nom { font: 600 20px/1.25 var(--ff-display); color: var(--c-text); }
+.soiree__nom--grand { font-size: clamp(22px, 4vw, 30px); }
+.soiree__meta { font: 11px var(--ff-text); letter-spacing: 0.1em; text-transform: uppercase; color: var(--c-text-dim); }
+
+/* Trois cibles franches : on vote au pouce, sans viser, souvent sans regarder. */
+.soiree__choix { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.soiree__vote {
+  min-height: 60px;
+  border: 1px solid #f1ede424;
+  border-radius: 5px;
+  background: var(--c-surface);
+  color: var(--c-text);
+  font: 600 14px var(--ff-text);
+  cursor: pointer;
+  transition: background 140ms ease, border-color 140ms ease;
+}
+.soiree__vote:hover { background: var(--c-raised); }
+.soiree__vote--oui.est-choisi { border-color: #6bbf7b; background: color-mix(in oklab, #6bbf7b 26%, var(--c-surface)); }
+.soiree__vote--peut.est-choisi { border-color: var(--c-accent); background: color-mix(in oklab, var(--c-accent) 24%, var(--c-surface)); }
+.soiree__vote--non.est-choisi { border-color: #e07a5f; background: color-mix(in oklab, #e07a5f 24%, var(--c-surface)); }
+
+.soiree__nav { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.soiree__autres { display: flex; flex-wrap: wrap; gap: 6px; }
+.soiree__puce {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 7px 11px;
+  border: 1px solid #f1ede41c;
+  border-radius: 999px;
+  font: 12px var(--ff-text);
+  color: var(--c-text-dim);
+}
+.soiree__puce em { font-style: normal; font-variant-numeric: tabular-nums; opacity: 0.75; }
+.soiree__puce.est-prete { border-color: color-mix(in oklab, #6bbf7b 55%, transparent); color: var(--c-text); }
+
+/* ── La révélation ────────────────────────────────────────────────────────── */
+
+.soiree__revelation { display: flex; flex-direction: column; gap: 16px; }
+.soiree__gagnant {
+  display: grid;
+  grid-template-columns: 108px 1fr;
+  gap: 16px;
+  align-items: start;
+  padding: 16px;
+  border: 1px solid color-mix(in oklab, var(--c-accent) 45%, transparent);
+  border-radius: 6px;
+  background: color-mix(in oklab, var(--c-accent) 8%, var(--c-surface));
+}
+/* Le titre, le type et la raison s'empilent : sans colonne, « Coyote vs. Acme »
+   et « FILM · 2026 » se collaient sur la même ligne. */
+.soiree__gagnant-texte { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.soiree__raison { font: 13px/1.5 var(--ff-text); color: var(--c-text-dim); margin: 6px 0 0; }
+
+.soiree__classement { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.soiree__ligne {
+  display: grid;
+  grid-template-columns: 26px 46px 1fr;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 4px;
+  border-bottom: 1px solid #f1ede412;
+}
+.soiree__ligne.est-gagnante { background: color-mix(in oklab, var(--c-accent) 6%, transparent); }
+.soiree__ligne .soiree__affiche { aspect-ratio: 2 / 3; border-radius: 3px; }
+.soiree__rang { font: 600 13px var(--ff-text); color: var(--c-text-dim); font-variant-numeric: tabular-nums; }
+.soiree__ligne-texte { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.soiree__ligne-texte strong { font: 500 14px var(--ff-text); color: var(--c-text); }
+.soiree__voix { display: flex; flex-wrap: wrap; gap: 6px; }
+.soiree__voix-item { display: inline-flex; align-items: center; gap: 5px; font: 11.5px var(--ff-text); color: var(--c-text-dim); }
+.soiree__voix-item i { font-style: normal; font-weight: 700; }
+.soiree__voix--oui i { color: #6bbf7b; }
+.soiree__voix--peut i { color: var(--c-accent); }
+.soiree__voix--non i { color: #e07a5f; }
+
+.soiree__pied { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; margin-top: 8px; }
+
+/* ── Le téléphone ─────────────────────────────────────────────────────────── */
+
+@media (max-width: 560px) {
+  .soiree { padding-bottom: 32px; gap: 16px; }
+  .soiree__carte .soiree__affiche { max-height: 38vh; }
+  .soiree__gagnant { grid-template-columns: 78px 1fr; gap: 12px; padding: 12px; }
+  .soiree__ligne { grid-template-columns: 20px 40px 1fr; gap: 9px; }
+  .soiree__vote { min-height: 56px; font-size: 13px; }
+}
+
+/* Le mouvement réduit ne change rien au jeu : on retire les glissements. */
+@media (prefers-reduced-motion: reduce) {
+  .soiree__barre i { transition: none; }
+  .soiree__vote { transition: none; }
+}
