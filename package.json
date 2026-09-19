@@ -11,5 +11,8 @@
     "room:8093": "node room/server.mjs --port 8093",
     "build": "node tools/build-netlify.mjs",
     "servir-dist": "node tools/serve-dist.mjs"
+  },
+  "dependencies": {
+    "@netlify/blobs": "^8.1.0"
   }
 }

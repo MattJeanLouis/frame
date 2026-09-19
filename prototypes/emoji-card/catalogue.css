@@ -89,7 +89,7 @@
      miroir. Le bouton Soirée n'avait aucune place dans cette grille — elle a
      été écrite avant lui — et retombait sur une ligne invisible, par-dessus le
      titre. */
-  #bar { display: grid; grid-template-columns: minmax(0,1fr) auto auto auto; grid-template-rows: 54px 60px; align-content: start; gap: 0 10px; }
+  #bar { display: grid; grid-template-columns: minmax(0,1fr) auto auto auto auto; grid-template-rows: 54px 60px; align-content: start; gap: 0 8px; }
   /* Le carré de marque est décoratif : sur téléphone, « FRAME » écrit suffit, et
      le retirer rend les quelques pixels qui manquaient — sans quoi le nom était
      tronqué en « FRA ». */
@@ -99,8 +99,9 @@
   .brand__frame { display: none; }
   #modes { grid-column: 2; grid-row: 1; gap: 9px; }
   .mode-btn { font-size: 12px; gap: 6px; }
-  #btn-soiree { grid-column: 3; grid-row: 1; font-size: 10px; padding: 0 7px; }
-  #btn-mirror { grid-column: 4; grid-row: 1; font-size: 10px; padding: 0 7px; }
+  #btn-profil { grid-column: 3; grid-row: 1; font-size: 10px; padding: 0 7px; }
+  #btn-soiree { grid-column: 4; grid-row: 1; font-size: 10px; padding: 0 7px; }
+  #btn-mirror { grid-column: 5; grid-row: 1; font-size: 10px; padding: 0 7px; }
   #tools { grid-column: 1 / -1; grid-row: 2; width: 100%; }
   .search { max-width: none; }
   #search { font-size: 16px; }
@@ -131,12 +132,18 @@
 /* Sous 400 px — la largeur de la plupart des téléphones Android — les quatre
    blocs ne tiennent plus : on resserre plutôt que de tronquer la marque. Un nom
    coupé se lit comme un défaut, un nom plus petit se lit comme un nom. */
-@media(max-width:400px) {
+@media(max-width:480px) {
   #bar { gap: 0 6px; }
-  .brand { font-size: 13px; }
+  /* Cinq blocs dans la largeur d'un téléphone : la marque cède la place. Le
+     projet dit déjà ce qu'elle est — « le seul signe de marque : un cadre, pas
+     un mot » — donc on garde le cadre et on retire le mot, plutôt que de le
+     tronquer. Personne n'a besoin qu'on lui rappelle quelle application il
+     vient d'ouvrir ; il a besoin de ses boutons. */
+  .brand { font-size: 0; gap: 0; }
+  .brand__frame { display: block; }
   .mode-btn { font-size: 11px; gap: 4px; }
   .mode-btn .ui-icon { width: 14px; height: 14px; }
-  #btn-soiree, #btn-mirror { font-size: 9px; padding: 0 5px; }
+  #btn-profil, #btn-soiree, #btn-mirror { font-size: 10px; padding: 0 6px; }
   .collection-heading h1 { font-size: 23px; }
   .density-control select { max-width: 78px; }
 }

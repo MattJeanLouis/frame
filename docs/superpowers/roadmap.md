@@ -186,7 +186,72 @@ cible sous 44 px.
 
 ---
 
-## 5. Publication
+## 5. Le profil synchronisé
+
+### Ce que c'est
+
+Un nom, un avatar, et un **code de douze signes** qui relie les appareils. Pas
+d'inscription, pas de mot de passe, pas d'e-mail, pas d'identifiant de compte.
+
+### Pourquoi pas de vrais comptes
+
+Netlify Identity — l'authentification intégrée de Netlify — est **déprécié** :
+Netlify renvoie vers Auth0. Un vrai système de comptes demanderait donc une base
+Postgres (Netlify DB), du hachage de mot de passe, des sessions, du rate-limiting
+et **un service d'e-mail** pour la vérification et la réinitialisation, plus de
+la sécurité écrite à la main. Netlify déconseille d'ailleurs son propre stockage
+clé-valeur pour des données par utilisateur.
+
+Ruling: pour un carnet de films personnel, le jeu n'en vaut pas la chandelle. Un
+code long est une clé de coffre, pas un mot de passe : on ne demande à personne
+de le retenir, on le recopie une fois — coût si faux : un code perdu est un
+profil perdu, il n'y a pas de récupération. C'est écrit dans le README.
+
+### La règle de fusion
+
+Le plus récent gagne, **film par film**, et non « l'appareil A écrase
+l'appareil B ». Sans cela, marquer un film sur le téléphone puis un autre sur
+l'ordinateur en perdrait un. On garde donc un horodatage par film ET par nature
+— marque, avis, commentaire, film — ce qui permet aussi d'enregistrer une
+SUPPRESSION : une clé horodatée sans valeur veut dire « effacé, et plus récemment
+que l'autre ».
+
+Ruling: une fusion par appareil est plus simple à écrire et perd le travail de
+l'autre — coût si faux : des données disparues qu'on ne remarque que trop tard.
+
+### Où c'est rangé
+
+`netlify/functions/profil.mjs`, sur Netlify Blobs en cohérence forte — une
+synchronisation qui relit aussitôt ce qu'elle vient d'écrire ne doit pas tomber
+sur une copie en retard. En local, la fonction retombe sur des fichiers ignorés
+par git, pour qu'on puisse l'éprouver avant de publier.
+
+Ruling: `@netlify/blobs` est la SEULE dépendance du projet, et elle ne part
+jamais dans le navigateur. Un test le vérifie désormais explicitement — le
+client reste sans aucune dépendance — coût si faux : un paquet dans la page.
+
+### Ce qui est vérifié
+
+**Entre deux navigateurs distincts**, deux profils, deux stockages : le téléphone
+marque un film, l'ordinateur en marque un autre, le téléphone se relie au code —
+et **les deux marques survivent**. Puis l'ordinateur récupère celle du téléphone,
+les deux sont identiques, et modifier un même film d'un côté l'emporte des deux
+côtés. Un code inventé ne fait rien perdre, un code trop court est refusé sur
+place. Zéro exception.
+
+### Ce qui reste ouvert
+
+- **Un code perdu est un profil perdu.** Il n'y a ni récupération ni transfert.
+- **Pas de révocation** : on peut changer de code, mais l'ancien reste lisible
+  par qui le connaît.
+- **Pas de limite de débit** sur la fonction : douze signes rendent le
+  tâtonnement impraticable, mais rien ne l'interdit explicitement.
+- **Le profil ne partage rien** : pas de liste publique, pas d'ami, pas de
+  comparaison. Ce serait l'étape suivante si elle est voulue.
+
+---
+
+## 6. Publication
 
 Le dépôt est **public** : <https://github.com/MattJeanLouis/frame>, branche `main`.
 Le site est prêt pour Netlify (`netlify.toml`), mais **pas encore déployé** : il
@@ -244,7 +309,7 @@ grille à deux colonnes, fiche à 44 px par état.
 
 ---
 
-## 6. Comment on vérifie
+## 7. Comment on vérifie
 
 Ce qui compte n'est pas qu'un test passe, c'est que l'application fasse ce qu'on
 croit qu'elle fait. Les scripts de `.superpowers/verify/` pilotent Chrome en
@@ -259,6 +324,7 @@ node verif-dispo.mjs              # disponibilités par pays
 node verif-sagas-dispo.mjs        # sagas, téléphone
 node verif-soiree.mjs             # le mode Soirée, à DEUX navigateurs
 node verif-publie.mjs             # la version construite, servie comme Netlify
+node verif-profil.mjs             # la synchronisation, entre DEUX navigateurs
 ```
 
 `verif-publie.mjs` a besoin de `npm run build` puis `npm run servir-dist` : il

@@ -1,0 +1,195 @@
+/* ── Le profil ───────────────────────────────────────────────────────────────
+   Un écran calme : qui tu es, et le code qui relie tes appareils. Rien à
+   valider, rien à confirmer par e-mail, rien à retenir. */
+
+body.profil-ouvert { overflow: hidden; }
+
+#profil {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  background: color-mix(in oklab, var(--c-bg) 96%, black);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+#profil[hidden] { display: none; }
+
+.profil {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 0 clamp(16px, 4vw, 32px) 56px;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.profil__barre {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 0 12px;
+  background: linear-gradient(var(--c-bg) 70%, transparent);
+}
+.profil__marque { font: 700 11px var(--ff-display); letter-spacing: 0.22em; color: var(--c-accent); margin-right: auto; }
+.profil__fermer {
+  width: 44px; height: 44px;
+  display: grid; place-items: center;
+  border: 1px solid #f1ede41c;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--c-text-dim);
+  font-size: 15px;
+  cursor: pointer;
+}
+.profil__fermer:hover { color: var(--c-text); background: var(--c-surface); }
+
+.profil__bloc { display: flex; flex-direction: column; gap: 12px; }
+.profil__titre {
+  margin: 0;
+  font: 500 clamp(18px, 2.4vw, 22px)/1.2 'Instrument Serif', serif;
+  color: var(--c-text);
+}
+
+.profil__tete { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 16px; align-items: center; }
+.profil__avatar {
+  width: 72px; height: 72px;
+  display: grid; place-items: center;
+  border: 1px solid #f1ede424;
+  border-radius: 6px;
+  background: var(--c-surface);
+  font-size: 34px;
+  line-height: 1;
+}
+
+.profil__champ { display: flex; flex-direction: column; gap: 6px; font: 12px var(--ff-text); color: var(--c-text-dim); }
+.profil__champ input {
+  min-height: 48px;
+  padding: 0 12px;
+  border: 1px solid #f1ede424;
+  border-radius: 4px;
+  background: var(--c-surface);
+  color: var(--c-text);
+  font: 15px var(--ff-text);
+}
+.profil__champ input:focus { outline: 2px solid var(--c-accent); outline-offset: 1px; }
+
+.profil__avatars { display: flex; flex-wrap: wrap; gap: 6px; }
+.profil__avatar-choix {
+  width: 46px; height: 46px;
+  display: grid; place-items: center;
+  border: 1px solid #f1ede41c;
+  border-radius: 5px;
+  background: var(--c-surface);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  transition: border-color 140ms ease, background 140ms ease;
+}
+.profil__avatar-choix:hover { background: var(--c-raised); }
+.profil__avatar-choix.est-choisi { border-color: var(--c-accent); background: color-mix(in oklab, var(--c-accent) 16%, var(--c-surface)); }
+
+.profil__code-bloc {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  padding: 18px;
+  border: 1px solid #f1ede41c;
+  border-radius: 6px;
+  background: var(--c-surface);
+}
+.profil__etiquette {
+  width: 100%;
+  font: 600 9.5px var(--ff-text);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--c-text-dim);
+}
+.profil__code {
+  font: 700 clamp(19px, 4.4vw, 26px)/1 var(--ff-display);
+  letter-spacing: 0.12em;
+  color: var(--c-accent);
+  word-break: break-all;
+}
+
+.profil__bouton {
+  min-height: 48px;
+  padding: 0 20px;
+  border: 1px solid #f1ede424;
+  border-radius: 4px;
+  background: var(--c-surface);
+  color: var(--c-text);
+  font: 500 14px var(--ff-text);
+  cursor: pointer;
+}
+.profil__bouton:hover:not(:disabled) { background: var(--c-raised); }
+.profil__bouton:disabled { opacity: 0.45; cursor: default; }
+.profil__bouton--fort { background: var(--c-accent); border-color: var(--c-accent); color: #17130a; font-weight: 600; }
+.profil__bouton--fort:hover:not(:disabled) { background: color-mix(in oklab, var(--c-accent) 88%, white); }
+.profil__bouton--petit { min-height: 40px; padding: 0 14px; font-size: 12px; }
+
+.profil__lien {
+  align-self: flex-start;
+  min-height: 44px;
+  padding: 0 10px;
+  border: 0;
+  background: transparent;
+  color: var(--c-text-dim);
+  font: 13px var(--ff-text);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.profil__lien:hover { color: var(--c-text); }
+
+.profil__note { margin: 0; font: 13px/1.55 var(--ff-text); color: var(--c-text-dim); max-width: 60ch; }
+.profil__note--fine { font-size: 11.5px; opacity: 0.8; }
+.profil__actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+
+.profil__alerte, .profil__succes {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 4px;
+  font: 13px/1.5 var(--ff-text);
+  color: var(--c-text);
+}
+.profil__alerte { border: 1px solid color-mix(in oklab, #e07a5f 60%, transparent); background: color-mix(in oklab, #e07a5f 14%, transparent); }
+.profil__succes { border: 1px solid color-mix(in oklab, #6bbf7b 55%, transparent); background: color-mix(in oklab, #6bbf7b 12%, transparent); }
+
+.profil__saisie {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 16px;
+  border: 1px dashed #f1ede430;
+  border-radius: 6px;
+}
+.profil__code-champ {
+  width: 100%;
+  min-height: 52px;
+  padding: 0 12px;
+  border: 1px solid #f1ede424;
+  border-radius: 4px;
+  background: var(--c-surface);
+  color: var(--c-text);
+  font: 600 20px/1 var(--ff-display);
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+.profil__code-champ:focus { outline: 2px solid var(--c-accent); outline-offset: 1px; }
+
+@media (max-width: 560px) {
+  .profil { gap: 18px; padding-bottom: 36px; }
+  .profil__tete { grid-template-columns: 1fr; gap: 12px; }
+  .profil__avatar { width: 60px; height: 60px; font-size: 28px; }
+  .profil__actions .profil__bouton { width: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .profil__avatar-choix { transition: none; }
+}

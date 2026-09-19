@@ -23,6 +23,27 @@ Deux variantes utiles :
 - http://localhost:8090/?mode=liste — la même application avec une grille de chips
   au lieu de la toile, pour comparer les deux à l'aveugle.
 
+## Ton profil, et tes deux appareils
+
+Pas d'inscription, pas de mot de passe, pas d'adresse e-mail. Un **code** de
+douze signes relie ton téléphone et ton ordinateur :
+
+1. **Profil → Créer mon code.** Ce que tu as déjà fait ici est rangé sous ce code.
+2. Sur l'autre appareil : **Profil → J'ai déjà un code**, et saisis-le.
+
+Les deux se rejoignent. La fusion est **film par film** : marquer *Dune* sur le
+téléphone puis *Alien* sur l'ordinateur ne perd ni l'un ni l'autre, et sur un
+même film c'est la modification la plus récente qui l'emporte — y compris quand
+il s'agit d'une suppression.
+
+Ce qui suit : tes états, tes signatures, tes commentaires, ta liste.
+Ce qui ne suit pas : tes filtres en cours, ta position dans le catalogue, et
+l'historique d'une soirée.
+
+Le code est la seule clé. Douze signes tirés dans un alphabet de trente-deux,
+soit environ 10¹⁸ combinaisons : personne ne le devinera, mais **garde-le** —
+il n'y a pas de « mot de passe oublié », par construction.
+
 ## Publier sur Netlify
 
 Le dépôt est prêt : `netlify.toml` décrit la construction, et une fonction serveur
@@ -52,6 +73,9 @@ npm run servir-dist    # sert dist/ + la fonction, sur le port 8094
 
 Le site publié est **statique** : catalogue, recherche, thèmes, collections,
 fiches, disponibilités, bandes-annonces. Tout cela fonctionne.
+
+Le **profil synchronisé** fonctionne en ligne : il passe par une seconde
+fonction Netlify, et le code est la seule clé.
 
 Le **mode Soirée** a besoin d'un serveur qui tient l'état partagé, et Netlify
 n'en fait pas tourner. En ligne, l'écran de soirée le dit et propose de saisir

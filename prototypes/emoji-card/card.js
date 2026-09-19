@@ -17,6 +17,7 @@ import { createDemoClient, DEMO_POOLS } from '../../src/demo.js';
 import { loadCredential, getKeywordCache, setKeywordId } from '../../src/storage.js';
 import { selectMovies } from '../../src/engine.js';
 import { initRoom, ouvrirRoom, fermerRoom } from './soiree.js';
+import { initProfil, ouvrirProfil, fermerProfil } from './profil.js';
 
 const STORE_KEY = 'frame.v2';
 /* Les six états, sur un seul axe : ce que tu dis d'un film, en un mot, d'une
@@ -80,6 +81,7 @@ const appEl = el('app');
 const wallEl = el('wall');
 const cardEl_ = el('card');
 const soireeEl = el('soiree');
+const profilEl = el('profil');
 const mirrorEl = el('mirror');
 const statusEl = el('status');
 const progressEl = el('progress');
@@ -128,7 +130,12 @@ const state = {
   /* Ce qu'on garde des films marqués, pour pouvoir les remontrer sans réseau.
      Une marque sans le film derrière n'est qu'un identifiant : « Ma liste »
      aurait alors eu besoin d'une requête par film. */
-  mesFilms: {}
+  mesFilms: {},
+  /* Quand chaque chose a été modifiée, film par film et nature par nature.
+     C'est ce qui permet de FUSIONNER deux appareils sans rien perdre : sans
+     horodatage, relier un téléphone et un ordinateur voudrait dire « l'un
+     écrase l'autre », et le travail de la soirée disparaîtrait. */
+  horodatages: {}
 };
 
 /* ── Persistance ──────────────────────────────────────────────────────────── */
@@ -142,7 +149,20 @@ function loadStore() {
     state.marks = parsed.marks && typeof parsed.marks === 'object' ? parsed.marks : {};
     state.comments = parsed.comments && typeof parsed.comments === 'object' ? parsed.comments : {};
     state.mesFilms = parsed.films && typeof parsed.films === 'object' ? parsed.films : {};
+    state.horodatages = parsed.horodatages && typeof parsed.horodatages === 'object' ? parsed.horodatages : {};
   } catch { /* sans localStorage, on perd seulement la persistance */ }
+}
+
+/**
+ * Noter qu'on vient de toucher à quelque chose.
+ *
+ * La clé mêle la nature et le film — « marque:movie:1 », « avis:tv:42 » — pour
+ * que la fusion compare ce qui est comparable. Une marque et une signature sur
+ * le même film sont deux choses indépendantes : poser l'une ne doit pas faire
+ * disparaître l'autre.
+ */
+function noter(nature, film) {
+  state.horodatages[nature + ':' + keyOf(film)] = Date.now();
 }
 
 function saveStore() {
@@ -151,7 +171,8 @@ function saveStore() {
       reactions: state.reactions,
       marks: state.marks,
       comments: state.comments,
-      films: state.mesFilms
+      films: state.mesFilms,
+      horodatages: state.horodatages
     }));
   } catch { /* idem */ }
 }
@@ -182,6 +203,7 @@ function rememberFilm(film) {
     // Quand il est entré dans la liste : c'est l'ordre naturel d'une liste.
     at: ancien?.at || Date.now()
   };
+  state.horodatages['film:' + k] = state.mesFilms[k].at;
 }
 
 /* ── Dérivation de la signature (spec v2 §4) ──────────────────────────────── */
@@ -2451,6 +2473,7 @@ function toggleMark(film, value) {
   const at = keyOf(film);
   if (state.marks[at] === value) delete state.marks[at];
   else state.marks[at] = value;
+  noter('marque', film);
   saveStore();
   renderFilters();
   refresh(film);
@@ -2779,6 +2802,7 @@ function reactionButton(film, sticker, signature, on) {
     if (at >= 0) own.splice(at, 1);
     else own.push(sticker.id);
     state.reactions[keyOf(film)] = own;
+    noter('avis', film);
     saveStore();
     if (at < 0) spark(event, sticker.emoji);
     announce(sticker.label + (at < 0 ? ' ajouté. ' : ' retiré. ') + 'Signature : ' +
@@ -2852,6 +2876,7 @@ function sigSlot(film, stickerId, index) {
   slot.append(emojiImg(sticker.emoji));
   slot.addEventListener('click', event => {
     state.reactions[keyOf(film)] = signatureOf(film).filter(x => x !== stickerId);
+    noter('avis', film);
     saveStore();
     spark(event, sticker.emoji);
     announce(sticker.label + ' retiré de la signature.');
@@ -3013,6 +3038,7 @@ function buildComposer(film) {
   input.addEventListener('input', () => {
     scale();
     state.comments[keyOf(film)] = { text: input.value, preset: state.preset, at: Date.now() };
+    noter('commentaire', film);
     saveStore();
   });
 
@@ -3029,6 +3055,7 @@ function buildComposer(film) {
     const value = input.value.trim();
     if (value) state.comments[keyOf(film)] = { text: value, preset: state.preset, at: Date.now() };
     else delete state.comments[keyOf(film)];
+    noter('commentaire', film);
     saveStore();
     state.composing = false;
     renderCardView(film);
@@ -3282,6 +3309,7 @@ function markChip(film, option, on, compact) {
     const at = keyOf(film);
     if (state.marks[at] === option.id) delete state.marks[at];
     else { state.marks[at] = option.id; rememberFilm(film); }
+    noter('marque', film);
     saveStore();
     announce(option.label + (state.marks[at] === option.id ? ' activé.' : ' désactivé.'));
     // Un avis peut faire naître « Pour vous » ET « Ma liste » : les rangées suivent.
@@ -3715,6 +3743,33 @@ async function start() {
   });
   el('btn-soiree').addEventListener('click', () => {
     if (soireeEl.hidden) ouvrirRoom(); else fermerRoom();
+  });
+
+  /* Le profil. Il ne connaît du catalogue que deux choses : l'état à ranger, et
+     quoi refaire quand une fusion l'a changé. Le reste — les codes, la fusion —
+     vit dans son module. */
+  initProfil({
+    etat: () => ({
+      reactions: state.reactions, marks: state.marks, comments: state.comments,
+      films: state.mesFilms, horodatages: state.horodatages
+    }),
+    appliquer: fusion => {
+      state.reactions = fusion.reactions;
+      state.marks = fusion.marks;
+      state.comments = fusion.comments;
+      state.mesFilms = fusion.mesFilms;
+      state.horodatages = fusion.horodatages;
+      saveStore();
+      renderFilters(); renderListe(); renderTris();
+      show();
+    },
+    annoncer: message => announce(message),
+    miroir: () => openMirror(),
+    ouvrir: () => { if (!cardEl_.hidden) closeCard(); if (!soireeEl.hidden) fermerRoom(); },
+    fermer: () => el('btn-profil')?.focus()
+  });
+  el('btn-profil').addEventListener('click', () => {
+    if (profilEl.hidden) ouvrirProfil(); else fermerProfil();
   });
   wallEl.addEventListener('scroll', () => {
     updateProgress();

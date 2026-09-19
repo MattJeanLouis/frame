@@ -35,6 +35,7 @@ if (!process.env.TMDB_TOKEN) {
 }
 
 const { default: relais } = await import('../netlify/functions/tmdb.mjs');
+const { default: profil } = await import('../netlify/functions/profil.mjs');
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -52,15 +53,23 @@ const TYPES = {
 const serveur = createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
 
-  /* La fonction, exactement au chemin que Netlify lui donne. */
-  if (url.pathname === '/.netlify/functions/tmdb') {
+  /* Les fonctions, exactement aux chemins que Netlify leur donne. */
+  const FONCTIONS = { '/.netlify/functions/tmdb': relais, '/.netlify/functions/profil': profil };
+  if (FONCTIONS[url.pathname]) {
     try {
-      const reponse = await relais(new Request(url.href, { method: req.method }));
-      const corps = await reponse.text();
+      const entrant = req.method === 'POST' || req.method === 'PUT'
+        ? await new Promise((ok, ko) => { const m = []; req.on('data', x => m.push(x)); req.on('end', () => ok(Buffer.concat(m))); req.on('error', ko); })
+        : undefined;
+      const reponse = await FONCTIONS[url.pathname](new Request(url.href, {
+        method: req.method,
+        headers: req.headers['content-type'] ? { 'content-type': req.headers['content-type'] } : undefined,
+        body: entrant?.length ? entrant : undefined
+      }));
+      const sortant = await reponse.text();
       const entetes = {};
       reponse.headers.forEach((v, k) => { entetes[k] = v; });
       res.writeHead(reponse.status, entetes);
-      res.end(corps);
+      res.end(sortant);
     } catch (error) {
       res.writeHead(500, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ erreur: error.message }));
@@ -103,6 +112,6 @@ serveur.listen(PORT, () => {
   console.log('\n  FRAME — version publiée, servie localement');
   console.log('  ─────────────────────────────────────────────');
   console.log('  http://localhost:' + PORT + '/');
-  console.log('  relais  /.netlify/functions/tmdb');
+  console.log('  fonctions  /.netlify/functions/tmdb  et  /profil');
   console.log('  ─────────────────────────────────────────────\n');
 });

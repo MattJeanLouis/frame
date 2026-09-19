@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -42,13 +42,27 @@ test('index.html attribue TMDB et Twemoji dans le pied de page', () => {
   assert.ok(html.includes('twemoji'));
 });
 
-test('package.json est sans dépendance et en modules ES', () => {
+test('le client est sans dépendance — le serveur en a une, et une seule', () => {
   const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
   assert.equal(pkg.type, 'module');
   assert.equal(pkg.scripts.test, 'node --test "tests/**/*.test.mjs"');
   assert.equal(pkg.scripts.serve, 'python3 -m http.server 8090');
-  assert.equal(pkg.dependencies, undefined);
+  /* Il n'y a toujours ni chaîne de construction ni greffon côté client : rien
+     n'est empaqueté, rien n'est transpilé. */
   assert.equal(pkg.devDependencies, undefined);
+  /* Une seule dépendance, et elle vit dans la fonction Netlify qui range les
+     profils. Le test suivant vérifie qu'elle ne part pas dans la page. */
+  assert.deepEqual(Object.keys(pkg.dependencies || {}), ['@netlify/blobs']);
+});
+
+test('aucune dépendance ne part dans la page publiée', () => {
+  /* La construction copie des fichiers, elle n'assemble rien : s'il n'y a ni
+     node_modules ni package.json dans dist/, aucun paquet n'atteint le
+     navigateur. */
+  const dist = join(ROOT, 'dist');
+  if (!existsSync(dist)) return;   // pas encore construite : rien à vérifier
+  assert.equal(existsSync(join(dist, 'node_modules')), false);
+  assert.equal(existsSync(join(dist, 'package.json')), false);
 });
 
 test('config.example.js expose les deux champs vides', () => {
