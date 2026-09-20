@@ -228,7 +228,7 @@ function blocSauvegarde() {
     const texte = versFichier(documentDe(deps.etat(), profilLocal(), Date.now()));
     const lien = document.createElement('a');
     lien.href = URL.createObjectURL(new Blob([texte], { type: 'application/json' }));
-    lien.download = 'frame-' + new Date().toISOString().slice(0, 10) + '.json';
+    lien.download = 'what-the-flick-' + new Date().toISOString().slice(0, 10) + '.json';
     lien.click();
     setTimeout(() => URL.revokeObjectURL(lien.href), 4000);
     aviser('Fichier exporté. Garde-le : c’est ta sauvegarde.', 'ok');

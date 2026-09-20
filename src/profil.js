@@ -271,7 +271,7 @@ export function depuisFichier(texte) {
   let brut;
   try { brut = JSON.parse(texte); } catch { return { erreur: 'Ce fichier n’est pas du JSON.' }; }
   const doc = brut?.doc && estDocument(brut.doc) ? brut.doc : (estDocument(brut) ? brut : null);
-  if (!doc) return { erreur: 'Ce fichier ne vient pas de FRAME, ou vient d’une version inconnue.' };
+  if (!doc) return { erreur: 'Ce fichier ne vient pas de What the Flick (anciennement FRAME), ou vient d’une version inconnue.' };
   return { doc };
 }
 

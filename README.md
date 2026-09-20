@@ -1,4 +1,13 @@
-# FRAME
+# What the Flick (WTF)
+
+**On regarde quoi ?** Découverte de films et soirées entre proches.
+
+L’application actuelle se trouve dans `prototypes/emoji-card/` ; `npm run build`
+prépare sa publication Netlify dans `dist/`. Identité visuelle dans
+`prototypes/emoji-card/brand/`. Les anciennes clés de stockage FRAME sont conservées
+pour retrouver les profils et les listes existants.
+
+La description ci-dessous documente aussi le premier prototype historique.
 
 Découverte de films par composition de stickers. Tu poses des stickers sur une toile,
 le tableau devient la requête, six films arrivent avec l'explication de ce qui les a

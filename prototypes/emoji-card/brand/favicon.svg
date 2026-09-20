@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#ff6b63"/><g transform="translate(4 20) scale(.3)" fill="#101114"><path d="M4 10h15l7 33 11-25h13l10 25 9-33h15L69 64H54L43 41 32 64H17Z"/>
+<path d="M87 10h46v14h-14v40h-18V24H87Z"/>
+<path d="M141 10h43v14h-25v9h21v14h-21v17h-18Z"/>
+<path class="brand-play" d="m168 51 16 7-16 7Z"/></g></svg>

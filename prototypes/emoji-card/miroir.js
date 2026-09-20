@@ -404,7 +404,7 @@ function monde(p) {
   const m = p.public;
   const bloc = h('section', 'miroir__bloc');
   bloc.id = 'miroir-monde';
-  bloc.append(titre('Toi et le public', 'FRAME ne note pas les films. La note publique de TMDB sert ici à une seule chose : mesurer ton écart avec elle.'));
+  bloc.append(titre('Toi et le public', 'What the Flick ne note pas les films. La note publique de TMDB sert ici à une seule chose : mesurer ton écart avec elle.'));
 
   if (m.surAimee && m.surRejetee) {
     const face = h('div', 'face');

@@ -462,7 +462,7 @@ export function trous(items) {
   if (sansDuree.length) liste.push({
     id: 'duree-manquante',
     titre: sansDuree.length + (sansDuree.length > 1 ? ' durées inconnues' : ' durée inconnue'),
-    dit: 'FRAME ne garde pas la durée d\'un film tant qu\'il ne l\'a pas ouvert en grand.',
+    dit: 'What the Flick ne garde pas la durée d\'un film tant qu\'il ne l\'a pas ouvert en grand.',
     deverrouille: 'Le temps total que tu as passé devant ces films, en jours et en heures.',
     n: sansDuree.length, sur: vus.length, items: sansDuree, action: 'completer'
   });
@@ -476,7 +476,7 @@ export function trous(items) {
   if (sansDate.length) liste.push({
     id: 'date-manquante',
     titre: sansDate.length + (sansDate.length > 1 ? ' gestes sans date' : ' geste sans date'),
-    dit: 'Ces marques datent d\'avant que FRAME garde l\'horodatage. Impossible de les replacer dans le temps.',
+    dit: 'Ces marques datent d\'avant que What the Flick garde l\'horodatage. Impossible de les replacer dans le temps.',
     deverrouille: 'Rien — c\'est irréparable. Elles comptent dans les totaux, et elles sont absentes du rythme.',
     n: sansDate.length, sur: items.length, items: sansDate, action: null
   });

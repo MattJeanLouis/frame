@@ -91,7 +91,7 @@ const PANELS_HTML = `
   <div class="panel__body">
     <h2 class="panel__title" id="panel-key-title">Ta clé TMDB</h2>
     <button class="panel__close hbtn" type="button" data-close="key" aria-label="Fermer">✕</button>
-    <p class="panel__lead">FRAME va chercher les films chez TMDB. Il te faut une clé gratuite.</p>
+    <p class="panel__lead">What the Flick va chercher les films chez TMDB. Il te faut une clé gratuite.</p>
     <ol class="panel__steps">
       <li>Crée un compte sur themoviedb.org.</li>
       <li>Ouvre Réglages, puis API, et demande une clé.</li>
@@ -484,7 +484,7 @@ function start() {
     const url = boardToUrl(board, location.href);
     if (navigator.share) {
       try {
-        await navigator.share({ title: 'FRAME', url });
+        await navigator.share({ title: 'What the Flick', url });
         return;
       } catch (error) {
         // Partage refusé par la personne : on n'insiste pas.
