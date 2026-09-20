@@ -52,11 +52,32 @@
 .refinements-head button { font-size: 18px; border: 0; }
 #refinements .row { display: block; padding: 18px 0; border-top: 1px solid #f1ede414; margin: 0; }
 #refinements .row__label { display: block; margin-bottom: 12px; font-size: 10px; letter-spacing: .1em; }
-#refinements :is(#filters,#tris,#sous-filtres,#liste) { display: flex; flex-wrap: wrap; gap: 6px; overflow: visible; mask-image: none; padding: 0; }
+#refinements :is(#filters,#tris,#sous-filtres,#liste,#univers) { display: flex; flex-wrap: wrap; gap: 6px; overflow: visible; mask-image: none; padding: 0; }
 #refinements .filter { min-height: 40px; padding: 0 11px; background: #f1ede405; border: 1px solid #f1ede410; font-size: 12px; }
 #refinements .filter[aria-pressed='true'] { background: #e5b46918; border-color: #e5b46960; }
 #refinements .filter-sep { flex-basis: 100%; height: 1px; margin: 8px 0; }
 #refinements .row__note, #refinements .liste-vide { white-space: normal; line-height: 1.6; font-size: 12px; }
+
+/* L'univers commande tout le reste du panneau : il se lit donc plus grand que
+   les autres pastilles, et sa phrase dit ce qu'il fait — sinon « Anime » et
+   « Sans anime » se ressemblent trop pour qu'on ose y toucher. */
+#row-univers { border-top: 0 !important; padding-top: 0 !important; }
+#refinements #univers .filter { min-height: 46px; padding: 0 15px; font-size: 13px; font-weight: 500; }
+#univers-note { margin: 10px 0 0; color: var(--c-text-dim); }
+
+/* Les catégories d'anime, par familles. Le libellé de famille est un vrai
+   titre : sans lui, quatre-vingts pastilles se lisent comme une seule masse. */
+#row-categories-anime input { width: 100%; }
+.anime-famille { flex-basis: 100%; margin-top: 16px; }
+.anime-famille:first-child { margin-top: 0; }
+.anime-famille__tete { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.anime-famille__titre { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
+.anime-famille__dit { font-size: 10px; color: var(--c-text-dim); opacity: .8; }
+.anime-famille__rangee { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+/* Pas de défilement propre à la rangée : le panneau défile déjà, et deux
+   zones de défilement imbriquées forment un piège au doigt — on fait glisser
+   l'une, c'est l'autre qui bouge. */
+#refinements #categories-anime { display: block; }
 .refinements-foot { position: sticky; bottom: -24px; display: flex; gap: 8px; margin: 18px -24px -24px; padding: 16px 24px; background: #131820; border-top: 1px solid #f1ede418; }
 .primary { background: var(--c-accent); border: 0; color: var(--c-bg); }
 .primary:hover { background: #edc489; color: var(--c-bg); }
@@ -201,7 +222,15 @@
 #search-pagination { flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 52px; padding: 4px var(--catalogue-gutter); border-top: 1px solid #f1ede412; font-size: 12px; color: var(--c-text-dim); }
 #search-pagination button { flex-shrink: 0; }
 #search-pagination button:disabled { opacity: .5; cursor: wait; }
-#collections { display: grid; grid-auto-flow: column; grid-auto-columns: 230px; gap: 12px; padding: 0 var(--catalogue-gutter) 20px; overflow-x: auto; scrollbar-width: thin; flex-shrink: 0; }
+/* Soixante-douze collections ne tiennent pas dans un défilement horizontal :
+   seize mètres de tuiles, on ne trouve rien. Le panneau devient une surface
+   qu'on parcourt verticalement, rangée par familles. */
+#collections { display: block; max-height: min(58vh, 560px); overflow-y: auto; overscroll-behavior: contain; padding: 0 var(--catalogue-gutter) 20px; scrollbar-width: thin; }
+.collections-famille { margin-bottom: 22px; }
+.collections-famille__tete { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+.collections-famille__titre { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; }
+.collections-famille__dit { font-size: 11px; color: var(--c-text-dim); }
+.collections-famille__grille { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
 .collection-tile { display: flex; flex-direction: column; justify-content: flex-end; min-height: 130px; padding: 20px; text-align: left; border: 1px solid #f1ede41c; border-radius: 4px; background: #1e252f; color: var(--c-text); cursor: pointer; }
 .collection-tile[data-tone='rust'] { background: #30201e; }
 .collection-tile[data-tone='gold'] { background: #2b261c; }
@@ -244,7 +273,8 @@
   .catalogue-options { margin-left: auto; }
   #search-pagination { font-size: 10px; min-height: 52px; }
   #search-status { max-height: 42px; overflow: auto; }
-  #collections { grid-auto-columns: 210px; }
+  #collections { max-height: 62vh; }
+  .collections-famille__grille { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
   .filters-open #collections { margin-right: 0; }
   .playback { padding: 6px 9px; bottom: 8px; }
   .playback__buttons { gap: 4px; }

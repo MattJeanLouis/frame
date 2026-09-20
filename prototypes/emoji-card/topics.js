@@ -3,7 +3,7 @@ import { EXTRA_TOPICS } from './collections.js';
 export const SOUS_GENRES = {
   28: [ // Action
     ['arts martiaux', '🥋', 'martial arts'], ['espionnage', '🕶️', 'spy'],
-    ['poursuite', '🚗', 'car chase'], ['arts martiaux', '🥋', 'kung fu'],
+    ['poursuite', '🚗', 'chase'], ['arts martiaux', '🥋', 'kung fu'],
     ['super-héros', '🦸', 'superhero'], ['arts martiaux', '🥋', 'samurai']
   ],
   12: [ // Aventure
@@ -17,7 +17,7 @@ export const SOUS_GENRES = {
     ['enfance', '🧒', 'childhood'], ['adaptation manga', '📖', 'based on manga']
   ],
   35: [ // Comédie
-    ['parodie', '🎭', 'parody'], ['comédie romantique', '💘', 'romantic comedy'],
+    ['parodie', '🎭', 'parody'], ['comédie romantique', '💘', 'romcom'],
     ['humour noir', '🖤', 'dark comedy'], ['buddy movie', '👯', 'buddy comedy'],
     ['satire', '📰', 'satire'], ['stand-up', '🎤', 'stand-up comedy']
   ],
@@ -29,7 +29,7 @@ export const SOUS_GENRES = {
   99: [ // Documentaire
     ['nature', '🌿', 'nature'], ['musique', '🎸', 'music documentary'],
     ['sport', '🏅', 'sport'], ['politique', '🏛️', 'politics'],
-    ['science', '🔬', 'science'], ['histoire vraie', '📜', 'true story']
+    ['science', '🔬', 'science'], ['histoire vraie', '📜', 'based on true story']
   ],
   18: [ // Drame
     ['famille', '👨‍👩‍👧', 'family drama'], ['deuil', '🕯️', 'grief'],
@@ -37,7 +37,7 @@ export const SOUS_GENRES = {
     ['adolescence', '🎒', 'coming of age'], ['justice', '⚖️', 'courtroom']
   ],
   10751: [ // Familial
-    ['enfants', '🧸', 'children'], ['animaux', '🐕', 'animal'],
+    ['enfants', '🧸', 'children'], ['animaux', '🐕', 'animals'],
     ['magie', '🪄', 'magic'], ['Noël', '🎄', 'christmas'],
     ['amitié', '🤝', 'friendship'], ['école', '🏫', 'school']
   ],
@@ -48,7 +48,7 @@ export const SOUS_GENRES = {
   ],
   36: [ // Histoire
     ['seconde guerre', '🪖', 'world war ii'], ['antiquité', '🏺', 'ancient rome'],
-    ['moyen âge', '⚔️', 'middle ages'], ['biographie', '📜', 'biography'],
+    ['moyen âge', '⚔️', 'middle ages (476-1453)'], ['biographie', '📜', 'biography'],
     ['révolution', '✊', 'revolution'], ['empire', '👑', 'empire']
   ],
   27: [ // Horreur
@@ -69,10 +69,10 @@ export const SOUS_GENRES = {
   10749: [ // Romance
     ['coup de foudre', '💘', 'love at first sight'], ['mariage', '💍', 'wedding'],
     ['adultère', '💔', 'adultery'], ['lettres', '💌', 'love letter'],
-    ['été', '☀️', 'summer romance'], ['rupture', '🥀', 'breakup']
+    ['été', '☀️', 'summer romance'], ['rupture', '🥀', 'break-up']
   ],
   878: [ // Science-Fiction
-    ['intelligence artificielle', '🤖', 'artificial intelligence'],
+    ['intelligence artificielle', '🤖', 'artificial intelligence (a.i.)'],
     ['voyage spatial', '🚀', 'space travel'], ['dystopie', '🏚️', 'dystopia'],
     ['voyage temporel', '⏳', 'time travel'], ['cyberpunk', '🌃', 'cyberpunk'],
     ['invasion', '👽', 'alien invasion'], ['clonage', '🧬', 'cloning']

@@ -85,7 +85,9 @@ console.log('  clé TMDB dans le paquet : ' +
    une feuille oubliée à la construction ne casse pas le build, elle casse
    l'écran, et seulement une fois en ligne. */
 const INDISPENSABLES = [
-  'index.html', 'card.js', 'card.css', 'soiree.js', 'miroir.js', 'miroir.css', 'liste.js', 'liste.css',
+  'brand/wtf-mark.svg', 'brand/favicon.svg', 'brand/apple-touch-icon.png', 'index.html', 'themes.js', 'themes.css',
+  'anime.js', 'collections.js', 'topics.js', 'discovery.js',
+  'card.js', 'card.css', 'soiree.js', 'miroir.js', 'miroir.css', 'liste.js', 'liste.css',
   'src/tmdb.js', 'src/miroir.js', 'src/profil.js', 'room/rooms.js', 'styles/tokens.css'
 ];
 const manquants = INDISPENSABLES.filter(f => !existsSync(join(DIST, f)));

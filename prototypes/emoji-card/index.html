@@ -3,15 +3,21 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="color-scheme" content="dark">
-<meta name="description" content="FRAME — prototype de la carte-film en emoji.">
-<title>FRAME — carte-film</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230B0E14'/%3E%3Crect x='7.5' y='7.5' width='17' height='17' rx='3' fill='none' stroke='%23F2B544' stroke-width='3'/%3E%3C/svg%3E">
+<meta name="color-scheme" content="light dark">
+<meta name="description" content="What the Flick — Trouve ton prochain film. Choisissez ensemble quoi regarder.">
+<title>What the Flick — On regarde quoi ?</title>
+<link rel="icon" type="image/svg+xml" href="brand/favicon.svg">
+<link rel="apple-touch-icon" href="brand/apple-touch-icon.png">
+<meta name="application-name" content="What the Flick">
+<meta property="og:site_name" content="What the Flick">
+<meta property="og:title" content="What the Flick — On regarde quoi ?">
+<meta property="og:description" content="Des films à découvrir. Des envies à partager. Trouvez votre prochain film.">
+<meta property="og:type" content="website">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="preconnect" href="https://image.tmdb.org" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=Instrument+Sans:wght@400;500;600&family=Instrument+Serif:ital@0;1&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=Instrument+Sans:wght@400;500;600&family=Instrument+Serif:ital@0;1&family=Space+Grotesk:wght@400;500;600;700&display=swap">
 <link rel="stylesheet" href="../../styles/tokens.css">
 <link rel="stylesheet" href="card.css">
 <link rel="stylesheet" href="direction.css">
@@ -20,14 +26,23 @@
 <link rel="stylesheet" href="profil.css">
 <link rel="stylesheet" href="liste.css">
 <link rel="stylesheet" href="miroir.css">
+<link rel="stylesheet" href="themes.css">
+<meta name="theme-color" content="#101114">
+<script src="themes.js"></script>
 <script src="../../config.local.js" onerror="window.FRAME_CONFIG = window.FRAME_CONFIG || {};"></script>
 </head>
 <body>
 
 <div id="app">
-  <!-- Le seul signe de marque : un cadre, pas un mot. -->
+  <!-- WTF : monogramme vectoriel et signature What the Flick. -->
   <header id="bar">
-    <a class="brand" href="./" aria-label="FRAME, accueil"><span class="brand__frame" aria-hidden="true"></span>FRAME<span class="brand__edition">CINÉMATHÈQUE PERSONNELLE</span></a>
+    <a class="brand" href="./" aria-label="What the Flick, accueil" title="What the Flick">
+      <svg class="brand__logo" viewBox="0 0 188 74" fill="currentColor" aria-hidden="true"><path d="M4 10h15l7 33 11-25h13l10 25 9-33h15L69 64H54L43 41 32 64H17Z"/>
+<path d="M87 10h46v14h-14v40h-18V24H87Z"/>
+<path d="M141 10h43v14h-25v9h21v14h-21v17h-18Z"/>
+<path class="brand-play" d="m168 51 16 7-16 7Z"/></svg>
+      <span class="brand__name" aria-hidden="true">WHAT<br>THE FLICK<span class="brand__period">.</span></span>
+    </a>
     <div id="modes" role="tablist" aria-label="Présentation"></div>
     <button class="glyph" id="btn-profil" type="button" aria-label="Ton profil et la synchronisation">
       <span>Profil</span>
@@ -67,9 +82,23 @@
     <aside id="refinements" aria-label="Affiner le catalogue" hidden>
       <div class="refinements-head"><div><span class="eyebrow">TA SÉLECTION</span><h2>Affiner.</h2></div><button type="button" id="close-refine" class="catalogue-control" aria-label="Fermer les filtres">✕</button></div>
       <div id="collection-filters"></div>
+    <!-- L'univers passe avant tout le reste : c'est lui qui décide de quel
+         vocabulaire on se sert ensuite. -->
+    <div class="row" id="row-univers">
+      <span class="row__label" aria-hidden="true">Univers</span>
+      <div id="univers" role="group" aria-label="Univers"></div>
+      <p class="row__note" id="univers-note"></p>
+    </div>
     <div class="row" id="row-filtres">
       <span class="row__label" aria-hidden="true">Genre</span>
       <div id="filters" role="group" aria-label="Filtres"></div>
+    </div>
+    <!-- Le swap : en univers anime, ces catégories prennent la place des
+         thèmes et sous-genres, qui ne veulent plus rien dire ici. -->
+    <div class="row" id="row-categories-anime" hidden>
+      <label class="row__label" for="anime-search">Catégories anime</label>
+      <input id="anime-search" type="search" placeholder="Trouver une catégorie…" aria-label="Trouver une catégorie d’anime">
+      <div id="categories-anime" role="group" aria-label="Catégories d’anime" hidden></div>
     </div>
     <div class="row" id="row-sous-filtres" hidden>
       <label class="row__label" for="topic-search">Thèmes & sous-genres</label>
@@ -98,7 +127,7 @@
   </div>
 
   <div class="collection-heading">
-    <div class="collection-context"><h1 id="collection-title">Le catalogue</h1><span id="collection-note"></span></div>
+    <div class="collection-context"><h1 id="collection-title">Le catalogue</h1><span id="collection-note"></span><button type="button" id="btn-theme" aria-haspopup="dialog" aria-controls="theme-dialog" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="8" r="4"/><circle cx="16" cy="8" r="4"/><circle cx="8" cy="16" r="4"/><circle cx="16" cy="16" r="4"/></svg><span>Ambiances</span><span id="theme-current" class="sr-only"></span></button></div>
     <div class="catalogue-options"><button type="button" id="btn-collections" class="catalogue-control" aria-expanded="false" aria-controls="collections">Collections</button>
       <label class="density-control" for="catalogue-density">Affiches <select id="catalogue-density"><option value="comfortable">Grandes</option><option value="compact">Compactes</option></select></label>
       <button type="button" id="btn-immersive" class="catalogue-control" aria-pressed="false">Agrandir</button>
@@ -140,6 +169,13 @@
 <button type="button" id="filter-backdrop" aria-label="Fermer les filtres" hidden></button>
 <div id="status" role="status" class="sr-only"></div>
 
+<dialog id="theme-dialog" aria-labelledby="theme-title" aria-describedby="theme-description">
+  <div class="theme-dialog__head"><div><span class="eyebrow">À CHACUN SON CINÉMA</span><h2 id="theme-title">À ton image.</h2></div><button type="button" id="close-theme" aria-label="Fermer les ambiances">✕</button></div>
+  <p id="theme-description">Douze palettes, une même passion. Choisis ton ambiance.</p>
+  <div id="theme-filters" role="group" aria-label="Filtrer les ambiances"><button type="button" data-scheme="all" aria-pressed="true">Toutes</button><button type="button" data-scheme="light" aria-pressed="false">Claires</button><button type="button" data-scheme="dark" aria-pressed="false">Sombres</button></div>
+  <div id="theme-choices" role="group" aria-label="Les douze ambiances"></div>
+  <p id="theme-status" role="status">Ton choix reste sur cet appareil.</p>
+</dialog>
 <script type="module" src="card.js"></script>
 </body>
 </html>

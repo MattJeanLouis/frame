@@ -83,6 +83,13 @@ un fond très sombre fait des emoji les **seules lumières de la pièce**.
    et d'évaluation. Avant de toucher, on doit savoir ce que le signe va faire ;
    après avoir touché, on doit voir ce qui s'est passé. Un emoji ambigu est un
    bon signifiant d'expression et un mauvais affordance de commande.
+   *Corollaire, ajouté le 20 septembre 2026 :* **aucune pastille morte.** Un
+   filtre qui s'allume et ne rend rien est pire qu'un filtre absent — il promet,
+   puis il ment. Tout mot-clé déclaré (`topics.js`, `collections.js`,
+   `anime.js`) doit exister dans TMDB **et** porter des titres.
+   `sonde-mots-cles.mjs` et `verif-collections.mjs` le vérifient contre l'API :
+   six mots-clés morts ont été trouvés ainsi, dont `romantic comedy`, qui existe
+   et sur lequel aucun film n'est posé.
 
 5. **Le miroir, pas le tableau de bord.** *Révisé le 20 septembre 2026.* Matt a
    demandé des graphes et des chiffres pour « mieux cerner sa culture et ses

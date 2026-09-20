@@ -26,7 +26,7 @@ Répartition des rôles entre les deux chantiers qui avancent en parallèle :
 
 | Chantier | Périmètre | Fichiers |
 |---|---|---|
-| **Fonctionnel** | recherche, filtres, pagination, fiches, lecture, stockage, miroir | `card.js`, `discovery.js`, `topics.js`, `collections.js`, `miroir.js`, `src/miroir.js` |
+| **Fonctionnel** | recherche, filtres, pagination, fiches, lecture, stockage, miroir | `card.js`, `discovery.js`, `topics.js`, `anime.js`, `collections.js`, `miroir.js`, `src/miroir.js` |
 | **Direction artistique** | mise en page, couleur, typographie, densité | `direction.css`, `catalogue.css` |
 
 Règle de travail : **garder les évolutions métier indépendantes de la couche DA.**
@@ -50,9 +50,15 @@ Chaque ligne ci-dessous a été éprouvée dans Chrome, pas seulement relue.
 - **218 thèmes distincts**, vérifiés auprès de TMDB.
 - **Pagination par curseurs.** `discovery.js` tient un curseur par source, sans
   seuil implicite ; « Charger la suite » reprend là où on s'est arrêté.
-- **12 collections thématiques**, chacune n'étant qu'un jeu de critères visibles
-  et modifiables — et qui s'efface dès qu'on en touche un.
-- **Filtres** : décennie, durée, langue, votes minimum, genres, sous-genres, tris.
+- **72 collections thématiques**, rangées en 13 familles — chacune n'étant qu'un
+  jeu de critères visibles et modifiables, et qui s'efface dès qu'on en touche un.
+- **Trois univers** : `Tout · Anime · Sans anime`. L'univers anime impose
+  l'animation japonaise et **remplace** la rangée des sous-genres par les
+  **78 catégories d'anime** (Crunchyroll / Wakanim), rangées en 10 familles.
+  « Sans anime » exclut l'animation japonaise sans toucher au reste — Pixar
+  reste là. Voir la section 10.
+- **Filtres** : décennie, durée, langue, votes minimum, genres, sous-genres,
+  catégories d'anime, tris.
 
 ### Fiches
 
@@ -540,7 +546,169 @@ commandes passent, aucune identité ne change.
 
 ---
 
-## 10. Comment on vérifie
+## 10. L'univers anime, et les collections
+
+Matt : « je voudrais que dans les filtres on puisse facilement swapper entre
+anime et film, et genre pour les anim japonais genre manga ; qu'y ait toutes les
+catégories des anime manga qu'on trouve dans Crunchyroll / Wakanim, pour vraiment
+aider les amateurs d'anime — et ceux qui aiment pas les anime, ils peuvent
+facilement pas les inclure dans ce qu'ils veulent voir. »
+
+Deux demandes en une, et la seconde n'est pas le négatif de la première :
+**entrer** dans l'anime, et pouvoir **s'en exclure**.
+
+### Ce que TMDB sait vraiment faire
+
+Rien de tout cela n'était donné. Trois faits ont été mesurés avant d'écrire une
+ligne, et deux ont changé le dessin :
+
+- **TMDB n'a pas de genres d'anime.** Il a un genre « Animation » (16) et un
+  vocabulaire de mots-clés. Toute la taxonomie vit donc dans les mots-clés — et
+  chaque identifiant a été *mesuré*, pas deviné. `sonde-anime.mjs` a essayé
+  65 concepts, plusieurs orthographes chacun, et n'a retenu qu'une
+  correspondance exacte.
+- **`without_original_language` N'EXISTE PAS.** TMDB ne renvoie pas d'erreur :
+  il ignore le paramètre. Le total était rigoureusement identique avec et sans
+  (11 392 dans les deux cas). Exclure l'anime par la langue était donc
+  impossible — et un test qui aurait « vérifié » le paramètre aurait été vert
+  pour rien.
+- **`with_keywords` accepte plusieurs identifiants** : la virgule intersecte, la
+  barre verticale réunit. Nos catégories se réunissent — choisir « Isekai » et
+  « Mecha » veut dire l'un ou l'autre.
+
+### La définition, assumée
+
+`estAnime(film)` = **genre 16 ET langue originale japonaise**. C'est la
+définition la plus large et la plus honnête qu'on puisse tenir sans jugement de
+goût : un film d'animation japonais qui n'a pas le mot-clé `anime` reste un
+anime. Les deux champs sont déjà dans chaque résultat de `discover` : le test ne
+coûte **aucune requête**, et il est exact.
+
+C'est lui qui rend « Sans anime » fiable. Le paramètre envoyé à TMDB
+(`without_keywords=210024`, le mot-clé canonique, posé sur 2 441 films et
+4 407 séries) ne sert qu'à densifier les pages.
+
+### Trois positions, pas deux
+
+`Tout · Anime · Sans anime`. « Sans anime » n'est pas l'inverse d'« Anime » :
+c'est une position pour qui n'en veut pas, et elle se tient toute seule.
+
+Le piège évité : exclure l'anime par `without_genres=16` aurait emporté **Pixar,
+Ghibli et tout le cinéma d'animation mondial**. C'est l'animation *japonaise*
+qu'on écarte, pas l'animation.
+
+### Le swap
+
+En univers anime, la rangée des **thèmes et sous-genres s'efface** au profit des
+**catégories d'anime**. Ce n'est pas un ajout, c'est un remplacement, et il est
+voulu : « Horreur » + « fantômes » ne dit rien à qui cherche un shōnen ; en
+revanche « Horreur » + « Gore » ou « Psychologique » dit exactement ce qu'il
+faut. Les deux rangées ne coexistent jamais — sinon on ne saurait plus laquelle
+parle.
+
+Les 78 catégories sont rangées en **10 familles** nommées et expliquées, avec un
+champ de recherche qui traverse les familles (« shonen » trouve « Shōnen » sans
+qu'on tape le macron). Elles couvrent la démographie manga (shōnen, shōjo,
+seinen, josei, kodomo), les genres qui n'existent qu'en anime (isekai, mecha,
+magical girl, tranche de vie, iyashikei, harem, idol, otome, méchante,
+délinquant…), et la source (manga, light novel, visual novel, manhwa, boys'
+love, yuri, ecchi).
+
+**Une catégorie qui ne rend rien n'a pas sa place ici.** La table est vérifiée
+contre TMDB dans l'intersection réelle de la requête — animation ET japonais —
+et pas dans l'absolu.
+
+### Ce qui a été trouvé en chemin, et qui n'était pas demandé
+
+En vérifiant les collections, `verif-collections.mjs` a buté sur une collection
+qui rendait zéro film. La cause n'était pas la collection : **`romantic comedy`
+est un mot-clé TMDB qui existe (id 383992) et sur lequel aucun film n'est
+posé.** Il était utilisé par le sous-genre « comédie romantique ».
+
+`sonde-mots-cles.mjs` a alors passé au crible les **234 mots-clés déclarés par
+l'application** :
+
+- six étaient **morts** — la pastille s'allume, et il n'y a rien derrière :
+  `romantic comedy`, `traditional animation`, `single location`,
+  `found footage film`, `serial murder`, `based on a true story` ;
+- huit étaient **agonisants** (moins de douze titres) : `car chase` (1),
+  `true story` (1), `korean war` (1), `sentient robot` (2),
+  `artificial intelligence` (3), `breakup` (4), `middle ages` (6),
+  `animal` (10).
+
+Le plus instructif : `artificial intelligence` existe en deux exemplaires.
+`artificial intelligence (a.i.)` (id 310) porte **300 titres** ; la version sans
+parenthèses en porte **3**. Le sous-genre pointait sur la mauvaise.
+
+Tous remplacés par des mots-clés vivants et mesurés. Après correction :
+**229 mots-clés, zéro mort, zéro agonisant.**
+
+### Les collections : de 12 à 72
+
+Matt : « j'aime beaucoup les collections, il m'en faut beaucoup plus. » Elles
+passent de 12 à 72, rangées en **13 familles** — horreur, science-fiction,
+polar, action & aventure, drame, comédie, romance, documentaire, famille,
+époques, pays, format, anime.
+
+Trois choses rendent l'élargissement tenable :
+
+- **`verif-collections.mjs` ouvre chaque collection** en rejouant la requête
+  exacte que construit l'application — genres traduits par type, mot-clé résolu
+  par son nom exact, univers appliqué. Les 72 rendent des films.
+- **Les familles sont la source**, la liste à plat en découle. Recopier une
+  famille dans chaque collection aurait fini par diverger, et le panneau range
+  les tuiles par famille : une divergence se verrait.
+- **Le panneau n'est plus un défilement horizontal.** Soixante-douze tuiles à la
+  queue leu leu faisaient seize mètres de tuiles ; on ne trouvait rien. Il se
+  parcourt verticalement, par familles.
+
+Deux défauts trouvés **en regardant les captures** : le premier jet avait un
+défilement propre à la rangée des catégories, **imbriqué dans un panneau qui
+défile déjà** — au doigt, on fait glisser l'un et c'est l'autre qui bouge ; et
+la phrase d'explication de chaque famille était écrite dans `anime.js` sans être
+affichée nulle part. Donnée morte : elle est maintenant rendue.
+
+### Ce qui est vérifié
+
+`verif-anime.mjs` travaille à deux niveaux, et le premier compte plus que le
+second :
+
+1. **ce que l'application DEMANDE à TMDB** — on lit les URL réellement envoyées.
+   Chaque requête de l'univers anime porte `with_genres` contenant 16 et
+   `with_original_language=ja` ; chaque requête de « Sans anime » porte
+   `without_keywords=210024` et **pas** de retrait du genre animation.
+2. **ce qui ARRIVE à l'écran** — rangées qui se remplacent, étiquettes actives,
+   catégories réellement retirées quand on quitte l'univers (pas seulement
+   cachées), titre et note, aucun débordement, cibles de 44 px sur téléphone,
+   aucune exception.
+
+Le contrôle décisif est ailleurs, et il a fallu le chercher : sur `discover`,
+c'est `without_keywords` qui fait tout le travail côté serveur — le mur a l'air
+propre **même si le filtre local ne servait à rien**. Mais `/search/` **ignore**
+ce paramètre : TMDB ne sait pas filtrer une recherche par mot-clé. C'est donc
+là, et seulement là, que `estAnime` est la seule défense. En cherchant
+« vampire » :
+
+> 80 titres reçus, **17 anime arrivés par la recherche** (Vampire Princesse
+> Miyu, Blood: The Last Vampire, Rosario + Vampire…), **aucun à l'écran.**
+
+### Reste ouvert
+
+- **`with_keywords` ne permet pas d'exclure une catégorie** : on peut empiler
+  des catégories, pas en retirer une. « Isekai sauf harem » n'est pas
+  exprimable.
+- **La définition par genre + langue attrape de l'animation japonaise qui n'est
+  pas « un anime »** au sens des amateurs (un court métrage d'auteur, une
+  publicité animée). C'est le prix de l'honnêteté : on ne juge pas le goût.
+- **Soixante-douze collections, c'est déjà beaucoup pour un panneau.** Il n'y a
+  pas de recherche dedans ; à cent, il en faudra une.
+- **Les catégories d'anime ne se combinent qu'en OU.** Deux catégories très
+  précises ensemble (« Josei » + « Iyashikei ») rendent peu, et on ne peut pas
+  demander l'intersection.
+
+---
+
+## 11. Comment on vérifie
 
 Ce qui compte n'est pas qu'un test passe, c'est que l'application fasse ce qu'on
 croit qu'elle fait. Les scripts de `.superpowers/verify/` pilotent Chrome en
@@ -560,7 +728,16 @@ node verif-watchlist.mjs          # export, import, lien de partage à TROIS nav
 node graine-miroir.mjs            # fabrique un vrai carnet à trous (61 films TMDB)
 node verif-miroir.mjs             # le miroir, chiffre par chiffre, contre un oracle Node
 node verif-lecteur-commun.mjs     # son et affiche, dans le player des DEUX modes
+node verif-anime.mjs              # l'univers anime, l'exclusion, les collections
+node verif-anime-table.mjs        # les 78 catégories d'anime, contre TMDB
+node verif-collections.mjs        # les 72 collections rendent-elles des films ?
+node sonde-mots-cles.mjs          # aucun mot-clé déclaré n'est mort
 ```
+
+Les quatre derniers interrogent TMDB avec la clé locale : ils ne testent pas du
+code, ils testent **la vérité de la donnée**. Un identifiant de mot-clé inventé,
+une collection vide ou une catégorie qui ne rend rien passent tous les tests
+unitaires — et mentent à l'écran.
 
 `verif-publie.mjs` a besoin de `npm run build` puis `npm run servir-dist` : il
 éprouve `dist/`, pas les sources, et vérifie en particulier que la clé TMDB ne

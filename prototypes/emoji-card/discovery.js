@@ -50,7 +50,17 @@ export function createDiscoverySession({ request, sources, normalize = x => x, a
 
 export const fold = value => String(value).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
-/** Un seul sujet rassemble des mots-clés proches en OU, jamais en intersection. */
+/**
+ * Un seul sujet rassemble des mots-clés proches en OU, jamais en intersection.
+ *
+ * Chaque synonyme doit EXISTER dans TMDB et porter des titres. Quatre noms
+ * figuraient ici et n'existaient pas — `found footage film`, `serial murder`,
+ * `based on a true story`, `sentient robot`. Ils ne gênaient pas, mais ils
+ * donnaient l'illusion d'une couverture plus large. Et `artificial
+ * intelligence` existait bel et bien (id 310, 300 titres) sous le nom
+ * `artificial intelligence (a.i.)` : la version sans parenthèses, elle, est un
+ * mot-clé quasi vide (id 272553-voisin, 3 titres).
+ */
 export const TOPIC_SYNONYMS = {
   ghost: ['ghost', 'haunting', 'haunted house'],
   'demonic possession': ['demonic possession', 'possession', 'exorcism'],
@@ -60,12 +70,10 @@ export const TOPIC_SYNONYMS = {
   heist: ['heist', 'bank robbery', 'robbery'],
   'space travel': ['space travel', 'space exploration'],
   'time travel': ['time travel', 'time loop'],
-  'artificial intelligence': ['artificial intelligence', 'android', 'sentient robot'],
-  'found footage': ['found footage', 'found footage film'],
-  'serial killer': ['serial killer', 'serial murder'],
-  'based on true story': ['based on true story', 'based on a true story'],
+  'artificial intelligence (a.i.)': ['artificial intelligence (a.i.)', 'android'],
   'stop motion': ['stop motion', 'claymation'],
-  'romantic comedy': ['romantic comedy', 'romcom']
+  claustrophobia: ['claustrophobia', 'claustrophobic'],
+  'middle ages (476-1453)': ['middle ages (476-1453)', 'medieval times']
 };
 
 export async function resolveTopicIds(topic, request, signal) {

@@ -1,6 +1,12 @@
 import { createDiscoverySession, resolveTopicIds, parseDiscoveryQuery, fold } from './discovery.js';
-import { COLLECTIONS } from './collections.js';
+import { COLLECTIONS, FAMILLES_COLLECTIONS } from './collections.js';
 import { SOUS_GENRES } from './topics.js';
+/* L'univers anime vit dans son propre module : sa table a été mesurée contre
+   TMDB, elle ne se mélange pas aux genres. Voir anime.js pour la méthode. */
+import {
+  UNIVERS, FAMILLES_ANIME, CATEGORIES_ANIME, universValide, estAnime,
+  paramsUnivers, libelleCategorie, chercherCategories
+} from './anime.js';
 // FRAME v2 — carte-film. Prototype jetable.
 //
 // Trois rôles pour l'emoji, trois contenants distincts (spec v2 §2) :
@@ -114,6 +120,13 @@ const state = {
   query: '',
   type: 'all',
   genres: [],
+  /* L'univers : « tout », « anime », « sans-anime ». Il ne remplace pas le
+     type (films/séries) — un anime est l'un ou l'autre. Il ne remplace pas
+     non plus les genres : il décide de ce qu'on regarde, eux de ce que c'est. */
+  univers: 'tout',
+  /* Les catégories d'anime choisies — des identifiants de mots-clés TMDB, en
+     OU. Voir anime.js : ces mots-là n'existent nulle part ailleurs. */
+  categoriesAnime: [],
   /* `null` = on n'est pas dans sa liste. `'tout'` = toute la liste.
      Un état de MARKS = seulement ceux-là. */
   liste: null,
@@ -1126,11 +1139,12 @@ function fadeIn() {
 
 /** Ce qu'on montre quand rien n'est cherché. */
 function updateCollectionHeading() {
+  const titreUnivers = state.univers === 'anime' ? 'Anime' : state.univers === 'sans-anime' ? 'Sans anime' : null;
   const title = state.liste ? 'Ma collection' : state.forYou ? 'Pour toi' : state.query ? 'Recherche'
-    : state.saga ? 'La saga' : state.mode === 'reel' ? 'En mouvement' : 'Le catalogue';
+    : state.saga ? 'La saga' : titreUnivers || (state.mode === 'reel' ? 'En mouvement' : 'Le catalogue');
   el('collection-title').textContent = title;
   el('collection-note').textContent = state.query ? '« ' + state.query + ' »' : state.liste ? (markById(state.liste)?.label || 'Tous tes titres') : '';
-  const count = state.genres.length + state.tris.length + (state.type !== 'all' ? 1 : 0) + (state.sousGenre ? 1 : 0) + [state.decade, state.runtimeMax, state.language].filter(Boolean).length + (state.minimumVotes !== '0' ? 1 : 0);
+  const count = state.genres.length + state.tris.length + (state.type !== 'all' ? 1 : 0) + (state.sousGenre ? 1 : 0) + [state.decade, state.runtimeMax, state.language].filter(Boolean).length + (state.minimumVotes !== '0' ? 1 : 0) + (state.univers !== 'tout' ? 1 : 0) + state.categoriesAnime.length;
   el('filter-count').textContent = count ? String(count) : '';
   const active = el('active-filters');
   const tags = [];
@@ -1139,12 +1153,21 @@ function updateCollectionHeading() {
     button.type = 'button'; button.textContent = label + ' ×';
     button.setAttribute('aria-label', 'Retirer le filtre ' + label);
     button.addEventListener('click', () => {
-      remove(); state.dejaVu = new Set(); renderFilters(); renderSousFiltres(); renderTris(); renderQueryChips(); renderPalette(); show();
+      remove(); state.dejaVu = new Set(); renderRangees(); renderQueryChips(); renderPalette(); show();
     });
     tags.push(button);
   };
   if (state.type !== 'all') tag(state.type === 'tv' ? 'Séries' : 'Films', () => { state.type = 'all'; });
+  /* L'univers se retire comme n'importe quel filtre, et il se retire EN
+     PREMIER parce qu'il commande le vocabulaire : le retirer doit aussi
+     rendre les catégories d'anime, qui n'auraient plus de rangée. */
+  if (state.univers !== 'tout') {
+    tag(UNIVERS.find(u => u.id === state.univers)?.label || state.univers, () => {
+      state.univers = 'tout'; state.categoriesAnime = [];
+    });
+  }
   for (const id of state.genres) tag(GENRE_PAR_ID.get(id)?.label || id, () => { state.genres = state.genres.filter(x => x !== id); state.sousGenre = null; });
+  for (const id of state.categoriesAnime) tag(libelleCategorie(id), () => { state.categoriesAnime = state.categoriesAnime.filter(x => x !== id); });
   if (state.sousGenre) tag(topicLabel(state.sousGenre), () => { state.sousGenre = null; });
   for (const id of state.tris) tag(triParId(id)?.nom || id, () => { state.tris = state.tris.filter(x => x !== id); });
   for (const id of state.picked) tag(STICKER_BY_ID.get(id)?.label || id, () => { state.picked = state.picked.filter(x => x !== id); });
@@ -1190,7 +1213,8 @@ function initCatalogueLayout() {
   el('reset-filters').addEventListener('click', () => {
     state.collection = null; state.saga = null; state.decade = ''; state.runtimeMax = ''; state.language = ''; state.minimumVotes = '0'; syncDiscoveryControls();
     state.type = 'all'; state.genres = []; state.sousGenre = null; state.tris = []; state.picked = []; state.liste = null; state.forYou = false; state.dejaVu = new Set();
-    renderFilters(); renderSousFiltres(); renderTris(); renderListe(); renderPalette(); renderQueryChips(); show();
+    state.univers = 'tout'; state.categoriesAnime = [];
+    renderRangees(); renderListe(); renderPalette(); renderQueryChips(); show();
   });
   el('catalogue-density').addEventListener('change', event => { appEl.dataset.density = event.target.value; closeCataloguePreview(); });
   const immersive = el('btn-immersive');
@@ -1247,12 +1271,19 @@ function collectionEncoreValide() {
   const c = COLLECTIONS.find(x => x.id === state.collection);
   if (!c) return false;
   const memesGenres = [...state.genres].sort((a, b) => a - b).join(',') === [...c.genres].sort((a, b) => a - b).join(',');
+  /* Les catégories d'anime entrent dans la comparaison : sans elles, ouvrir
+     une collection d'anime puis retirer une catégorie laissait le titre de la
+     collection affiché alors qu'on ne l'était plus. */
+  const memesCategories = [...state.categoriesAnime].sort((a, b) => a - b).join(',') ===
+    [...(c.categoriesAnime || [])].sort((a, b) => a - b).join(',');
   return memesGenres
+    && memesCategories
+    && state.univers === universValide(c.univers)
     && (state.sousGenre || null) === (c.topic || null)
     && (state.language || '') === (c.language || '')
     && (state.runtimeMax || '') === String(c.runtime || '')
     && (state.decade || '') === (c.decade || '')
-    && state.type === 'movie'
+    && state.type === (c.type || 'movie')
     && state.minimumVotes === '0'
     && !state.tris.length
     && !state.query.trim();
@@ -1826,9 +1857,14 @@ function raisonDuVide() {
     if (state.sousGenre) {
       return 'Aucun titre ne porte à la fois ce genre et « ' + state.sousGenre +' ». Élargis en retirant la précision.';
     }
+    if (state.categoriesAnime.length && state.univers === 'anime') {
+      return 'Aucun anime ne croise ce genre et ces catégories. Retire une catégorie pour élargir.';
+    }
     return 'Rien avec ces genres. Retires-en un pour élargir.';
   }
   if (state.query.trim()) return 'Rien ne correspond à « ' + state.query.trim() + ' ».';
+  if (state.univers === 'anime' && state.categoriesAnime.length) return 'Rien dans ces catégories. Le catalogue en couvre pourtant des milliers — retire-en une.';
+  if (state.univers === 'anime') return 'Rien à montrer dans l’univers anime pour l’instant.';
   return 'Rien à montrer ici pour l’instant.';
 }
 
@@ -1864,10 +1900,23 @@ function neufs(items) {
 function topicLabel(key) {
   return Object.values(SOUS_GENRES).flat().find(t => t[2] === key)?.[0] || key;
 }
+
+/**
+ * LE SWAP.
+ *
+ * En univers anime, la rangée des thèmes et sous-genres s'efface au profit des
+ * catégories d'anime. Ce n'est pas un ajout : c'est un remplacement, et il est
+ * voulu. « Horreur » + « fantômes » ne dit rien à qui cherche un shōnen ; en
+ * revanche « Horreur » + « Gore » ou « Psychologique » dit exactement ce qu'il
+ * faut. Les deux rangées ne coexistent jamais, sinon on ne saurait plus
+ * laquelle parle.
+ */
 function renderSousFiltres() {
+  const anime = state.univers === 'anime';
   const host = el('sous-filtres');
-  el('row-sous-filtres').hidden = false;
-  host.hidden = false;
+  el('row-sous-filtres').hidden = anime;
+  host.hidden = anime;
+  if (anime) { host.replaceChildren(); return; }
   const query = fold(el('topic-search')?.value || '');
   const groups = state.genres.length ? state.genres.map(id => SOUS_GENRES[id] || []) : Object.values(SOUS_GENRES);
   const topics = [...new Map(groups.flat().map(t => [t[2], t])).values()];
@@ -1880,6 +1929,102 @@ function renderSousFiltres() {
   if (!host.children.length) {
     const empty = document.createElement('p'); empty.className = 'row__note'; empty.textContent = 'Aucun thème avec ce nom.'; host.append(empty);
   }
+}
+
+/**
+ * Toutes les rangées de filtres d'un coup.
+ *
+ * Il y en a cinq maintenant, et elles dépendent les unes des autres :
+ * l'univers décide si les catégories d'anime existent, les genres décident
+ * quels sous-genres s'affichent. Redessiner à la main à chaque endroit, c'est
+ * se garantir d'en oublier un — et une pastille allumée qui ne filtre plus
+ * rien est pire qu'une pastille absente.
+ */
+function renderRangees() {
+  renderUnivers(); renderFilters(); renderSousFiltres(); renderCategoriesAnime(); renderTris();
+}
+
+/**
+ * La rangée de l'univers : trois positions, un clic.
+ *
+ * C'est le geste que Matt a demandé — passer d'anime à film sans ouvrir trois
+ * menus. « Sans anime » n'est pas là pour être l'inverse d'« Anime » : c'est
+ * une position pour qui n'en veut pas du tout, et elle se tient toute seule.
+ */
+function renderUnivers() {
+  const host = el('univers');
+  const frag = document.createDocumentFragment();
+  for (const u of UNIVERS) {
+    frag.append(filterChip(u.emoji, u.label, state.univers === u.id, () => {
+      if (state.univers === u.id) return;
+      state.univers = u.id;
+      /* On change de vocabulaire : ce qui parlait l'ancien ne doit pas rester
+         actif en silence, invisible et pourtant à l'œuvre. */
+      state.categoriesAnime = [];
+      state.sousGenre = null;
+      if (u.id === 'anime') { state.language = ''; syncDiscoveryControls(); }
+      state.dejaVu = new Set();
+      renderRangees();
+      scheduleFilter();
+    }));
+  }
+  host.replaceChildren(frag);
+  const courant = UNIVERS.find(u => u.id === state.univers);
+  el('univers-note').textContent = courant?.dit || '';
+}
+
+/**
+ * Les catégories d'anime, groupées par famille.
+ *
+ * Quatre-vingts pastilles à plat ne se lisent pas : on les range, et le champ
+ * de recherche traverse les familles. Chaque famille porte une phrase, parce
+ * qu'un titre de famille seul ne dit pas ce qu'on y trouvera.
+ */
+function renderCategoriesAnime() {
+  const anime = state.univers === 'anime';
+  el('row-categories-anime').hidden = !anime;
+  const host = el('categories-anime');
+  host.hidden = !anime;
+  if (!anime) { host.replaceChildren(); return; }
+
+  const trouvees = chercherCategories(el('anime-search')?.value || '');
+  const frag = document.createDocumentFragment();
+  for (const famille of FAMILLES_ANIME) {
+    const dedans = trouvees.filter(c => c.famille === famille.id);
+    if (!dedans.length) continue;
+    const bloc = document.createElement('div');
+    bloc.className = 'anime-famille';
+    const tete = document.createElement('div');
+    tete.className = 'anime-famille__tete';
+    const titre = document.createElement('strong');
+    titre.className = 'anime-famille__titre';
+    titre.textContent = famille.titre;
+    const dit = document.createElement('span');
+    dit.className = 'anime-famille__dit';
+    dit.textContent = famille.dit;
+    tete.append(titre, dit);
+    bloc.append(tete);
+    const rangee = document.createElement('div');
+    rangee.className = 'anime-famille__rangee';
+    for (const c of dedans) {
+      rangee.append(filterChip(c.emoji, c.label, state.categoriesAnime.includes(c.id), () => {
+        const at = state.categoriesAnime.indexOf(c.id);
+        if (at >= 0) state.categoriesAnime.splice(at, 1);
+        else state.categoriesAnime.push(c.id);
+        state.dejaVu = new Set();
+        renderCategoriesAnime();
+        scheduleFilter();      }));
+    }
+    bloc.append(rangee);
+    frag.append(bloc);
+  }
+  if (!trouvees.length) {
+    const vide = document.createElement('p');
+    vide.className = 'row__note';
+    vide.textContent = 'Aucune catégorie avec ce nom. Essaie « mecha », « isekai », « tranche de vie »…';
+    frag.append(vide);
+  }
+  host.replaceChildren(frag);
 }
 
 /**
@@ -2021,6 +2166,7 @@ function scheduleFilter(delai = DELAI_CLIC) {
 
 const filtresActifs = () =>
   Boolean(state.query.trim()) || state.type !== 'all' || state.genres.length > 0 ||
+  state.univers !== 'tout' || state.categoriesAnime.length > 0 ||
   state.tris.some(id => id !== 'populaire');
 
 /**
@@ -2053,6 +2199,9 @@ function initDiscoveryControls() {
     el(id).addEventListener('change', event => { state[key] = event.target.value; scheduleFilter(); });
   }
   el('topic-search').addEventListener('input', renderSousFiltres);
+  /* Chercher une catégorie ne relance pas la requête : on ne fait que
+     restreindre la liste sous les yeux. C'est un filtre de LECTURE. */
+  el('anime-search').addEventListener('input', renderCategoriesAnime);
   el('load-next').addEventListener('click', () => {
     if (discovery) loadMore(); else show();
   });
@@ -2061,20 +2210,69 @@ function initDiscoveryControls() {
     el('collections').hidden = !open;
     el('btn-collections').setAttribute('aria-expanded', String(open));
   });
-  el('collections').replaceChildren(...COLLECTIONS.map(collection => {
-    const button = document.createElement('button'); button.type = 'button'; button.className = 'collection-tile'; button.dataset.tone = collection.tone;
-    const title = document.createElement('strong'); title.textContent = collection.title;
-    const sub = document.createElement('span'); sub.textContent = collection.subtitle;
-    button.append(title,sub);
-    button.addEventListener('click', () => {
-      state.collection = collection.id; state.saga = null; state.query = ''; el('search').value = ''; el('search-clear').hidden = true;
-      state.genres = [...collection.genres]; state.sousGenre = collection.topic || null; state.type = 'movie';
-      state.language = collection.language || ''; state.runtimeMax = String(collection.runtime || ''); state.decade = collection.decade || ''; state.minimumVotes = '0';
-      state.tris = []; state.liste = null; state.forYou = false; state.picked = [];
-      syncDiscoveryControls(); renderFilters(); renderSousFiltres(); renderTris(); renderListe();
-      el('collections').hidden = true; el('btn-collections').setAttribute('aria-expanded','false'); show();
-    }); return button;
-  }));
+  renderCollections();
+}
+
+/**
+ * Une tuile de collection : ce qu'elle ouvre, et ce qu'elle laisse en place.
+ *
+ * Ouvrir une collection n'empile pas un filtre de plus : elle REMPLACE la
+ * sélection. L'univers fait partie de ce qu'elle remplace — sans quoi une
+ * collection d'anime ouverte depuis « sans anime » n'aurait rien montré.
+ */
+function tuileCollection(collection) {
+  const button = document.createElement('button');
+  button.type = 'button'; button.className = 'collection-tile'; button.dataset.tone = collection.tone;
+  const title = document.createElement('strong'); title.textContent = collection.title;
+  const sub = document.createElement('span'); sub.textContent = collection.subtitle;
+  button.append(title, sub);
+  button.addEventListener('click', () => {
+    state.collection = collection.id; state.saga = null; state.query = ''; el('search').value = ''; el('search-clear').hidden = true;
+    state.genres = [...collection.genres]; state.sousGenre = collection.topic || null;
+    /* Une collection d'anime doit pouvoir dire « anime », et une collection
+       de séries doit pouvoir dire « séries » : le type était figé sur
+       « film », ce qui aurait vidé de sens la moitié du catalogue. */
+    state.type = collection.type || 'movie';
+    state.univers = universValide(collection.univers);
+    state.categoriesAnime = [...(collection.categoriesAnime || [])];
+    state.language = collection.language || ''; state.runtimeMax = String(collection.runtime || ''); state.decade = collection.decade || ''; state.minimumVotes = '0';
+    state.tris = []; state.liste = null; state.forYou = false; state.picked = [];
+    syncDiscoveryControls(); renderRangees(); renderListe();
+    el('collections').hidden = true; el('btn-collections').setAttribute('aria-expanded','false'); show();
+  });
+  return button;
+}
+
+/**
+ * Le panneau des collections, rangé par familles.
+ *
+ * Soixante-douze tuiles à la queue leu leu faisaient seize mètres de défilement
+ * horizontal : on ne trouvait rien. Les familles nomment ce qu'on cherche avant
+ * qu'on le cherche — et elles viennent de `collections.js`, pas d'une copie.
+ */
+function renderCollections() {
+  const frag = document.createDocumentFragment();
+  for (const famille of FAMILLES_COLLECTIONS) {
+    const dedans = COLLECTIONS.filter(c => c.famille === famille.id);
+    if (!dedans.length) continue;
+    const bloc = document.createElement('section');
+    bloc.className = 'collections-famille';
+    const tete = document.createElement('div');
+    tete.className = 'collections-famille__tete';
+    const titre = document.createElement('strong');
+    titre.className = 'collections-famille__titre';
+    titre.textContent = famille.titre;
+    const dit = document.createElement('span');
+    dit.className = 'collections-famille__dit';
+    dit.textContent = famille.dit;
+    tete.append(titre, dit);
+    const grille = document.createElement('div');
+    grille.className = 'collections-famille__grille';
+    for (const collection of dedans) grille.append(tuileCollection(collection));
+    bloc.append(tete, grille);
+    frag.append(bloc);
+  }
+  el('collections').replaceChildren(frag);
 }
 
 function updateDiscoveryStatus() {
@@ -2128,16 +2326,28 @@ async function runSearch(_page = 1, { append = false } = {}) {
         }
         return api(path, params, options);
       };
+      /* Les mots-clés se réunissent : un thème de sous-genre et les catégories
+         d'anime cohabitent dans la même barre verticale, donc en OU. */
+      const mots = [...ids, ...state.categoriesAnime];
+      /* L'univers ajoute ses contraintes. En anime, la langue japonaise est
+         imposée : elle gagne sur le filtre de langue, qui ne peut pas dire
+         « japonais » autrement qu'en le redisant. */
+      const universParams = paramsUnivers(state.univers);
+      const animeSeul = state.univers === 'anime';
       let sources = movieKinds.flatMap(kind => {
         const mapped = genres.map(id => GENRES_TMDB[id]?.[kind === 'movie' ? 'film' : 'serie']).filter(Boolean);
         if (mapped.length !== genres.length) return [];
+        /* Le genre de l'univers s'ajoute APRÈS le contrôle ci-dessus : il ne
+           doit pas faire croire qu'un genre est introuvable dans ce type. */
+        const avecUnivers = [...new Set([...mapped, ...(universParams.with_genres || [])])];
         const dateKey = kind === 'movie' ? 'primary_release_date' : 'first_air_date';
         return [{ kind, path: (text ? '/search/' : '/discover/') + kind, params: text ? { query: text, include_adult: false } : {
           include_adult: false, sort_by: triServeur(kind) || 'popularity.desc',
-          with_genres: [...new Set(mapped)].join(',') || undefined,
-          with_keywords: ids.join('|') || undefined,
+          with_genres: avecUnivers.join(',') || undefined,
+          with_keywords: mots.join('|') || undefined,
+          without_keywords: universParams.without_keywords || undefined,
           'vote_count.gte': filters.votes || undefined,
-          with_original_language: filters.language || undefined,
+          with_original_language: animeSeul ? universParams.with_original_language : (filters.language || undefined),
           'with_runtime.lte': filters.runtime || undefined,
           [dateKey + '.gte']: filters.decade ? filters.decade + '-01-01' : undefined,
           [dateKey + '.lte']: filters.decade ? (Number(filters.decade) + 9) + '-12-31' : undefined
@@ -2146,14 +2356,20 @@ async function runSearch(_page = 1, { append = false } = {}) {
       if (state.saga) sources = [{ kind: 'movie', path: '/collection/' + state.saga.id, params: {} }];
       discoveryFiltered = Boolean(text && (genres.length || topic || Object.values(filters).some(Boolean)));
       const accept = async film => {
+        /* L'univers se vérifie TOUJOURS, même dans le catalogue ordinaire :
+           c'est ce qui rend « sans anime » exact plutôt qu'approché. Le
+           paramètre envoyé à TMDB ne sert qu'à densifier les pages — ici, on
+           tranche, et ce test ne coûte aucune requête. */
+        if (state.univers === 'sans-anime' && estAnime(film)) return false;
+        if (animeSeul && !estAnime(film)) return false;
         if (!text) return true;
         if (genres.length && !genres.every(id => film.genre_ids.includes(id))) return false;
-        if (filters.language && film.original_language !== filters.language) return false;
+        if (filters.language && !animeSeul && film.original_language !== filters.language) return false;
         if (filters.votes && film.vote_count < filters.votes) return false;
         if (filters.decade && !(Number(film.date?.slice(0,4)) >= Number(filters.decade) && Number(film.date?.slice(0,4)) <= Number(filters.decade) + 9)) return false;
-        if (ids.length) {
+        if (mots.length) {
           const kw = await api('/' + film.kind + '/' + film.id + '/keywords', {}, { signal });
-          if (!(kw.keywords || kw.results || []).some(k => ids.includes(k.id))) return false;
+          if (!(kw.keywords || kw.results || []).some(k => mots.includes(k.id))) return false;
         }
         if (filters.runtime) {
           const detail = await api('/' + film.kind + '/' + film.id, {}, { signal });
@@ -4011,9 +4227,7 @@ async function start() {
 
   renderModes();
   renderListe();
-  renderFilters();
-  renderSousFiltres();
-  renderTris();
+  renderRangees();
   renderDrawers();
   renderPalette();
   renderQueryChips();
