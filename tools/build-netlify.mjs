@@ -86,9 +86,9 @@ console.log('  clé TMDB dans le paquet : ' +
    l'écran, et seulement une fois en ligne. */
 const INDISPENSABLES = [
   'brand/wtf-mark.svg', 'brand/favicon.svg', 'brand/apple-touch-icon.png', 'index.html', 'themes.js', 'themes.css',
-  'anime.js', 'collections.js', 'topics.js', 'discovery.js',
+  'anime.js', 'collections.js', 'topics.js', 'discovery.js', 'graphe.js', 'catalogue.css',
   'card.js', 'card.css', 'soiree.js', 'miroir.js', 'miroir.css', 'liste.js', 'liste.css',
-  'src/tmdb.js', 'src/miroir.js', 'src/profil.js', 'room/rooms.js', 'styles/tokens.css'
+  'src/tmdb.js', 'src/miroir.js', 'src/profil.js', 'src/credits.js', 'src/graphe.js', 'room/rooms.js', 'styles/tokens.css'
 ];
 const manquants = INDISPENSABLES.filter(f => !existsSync(join(DIST, f)));
 if (manquants.length) {

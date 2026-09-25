@@ -26,7 +26,7 @@ Répartition des rôles entre les deux chantiers qui avancent en parallèle :
 
 | Chantier | Périmètre | Fichiers |
 |---|---|---|
-| **Fonctionnel** | recherche, filtres, pagination, fiches, lecture, stockage, miroir | `card.js`, `discovery.js`, `topics.js`, `anime.js`, `collections.js`, `miroir.js`, `src/miroir.js` |
+| **Fonctionnel** | recherche, filtres, pagination, fiches, lecture, stockage, miroir, graphe | `card.js`, `discovery.js`, `topics.js`, `anime.js`, `collections.js`, `graphe.js`, `miroir.js`, `src/miroir.js`, `src/graphe.js`, `src/credits.js` |
 | **Direction artistique** | mise en page, couleur, typographie, densité | `direction.css`, `catalogue.css` |
 
 Règle de travail : **garder les évolutions métier indépendantes de la couche DA.**
@@ -59,6 +59,12 @@ Chaque ligne ci-dessous a été éprouvée dans Chrome, pas seulement relue.
   reste là. Voir la section 10.
 - **Filtres** : décennie, durée, langue, votes minimum, genres, sous-genres,
   catégories d'anime, tris.
+- **Trois affichages** : Grandes, Compactes, et **Graphe** — les mêmes films en
+  points reliés par réalisateur, saga, casting ou genre. Voir la section 11.
+- **Recherche avancée** : par personne (réalisation, production, jeu) et par
+  société (studio, chaîne). Une filmographie arrive entière, d'un seul coup, avec
+  son métier exact. Le réalisateur et la société sont **cliquables** dans une
+  fiche. Voir la section 11.
 
 ### Fiches
 
@@ -708,7 +714,188 @@ là, et seulement là, que `estAnime` est la seule défense. En cherchant
 
 ---
 
-## 11. Comment on vérifie
+## 11. Le graphe, et la recherche par qui l'a fait
+
+Deux demandes de Matt, arrivées ensemble :
+
+> « le mode d'affichage des affiches, on en a que 2, grandes ou compactes — je
+> pense qu'on devrait setup une vue graphe de points comme Obsidian. Et aussi
+> dans le moteur de recherche, pouvoir entrer et lister par réalisateur ou
+> producteur ou partenaire, tu vois, genre en recherche avancée. C'est
+> important. »
+
+### La vue graphe
+
+Un troisième choix dans « Affiches », à côté de Grandes et Compactes : **Graphe**.
+Le mur s'efface, un canvas prend sa place, et les mêmes films deviennent des
+points reliés par ce qu'ils partagent.
+
+**Quatre façons de relier**, et elles se choisissent : Réalisateur, Saga,
+Casting, Genre. Les points sont des affiches, pas des pastilles abstraites — un
+graphe de ronds colorés pourrait représenter n'importe quoi, celui-ci montre des
+films et on reconnaît une grappe avant de la lire.
+
+**Le survol éteint le reste** : à quarante points, tout voir ne veut rien dire ;
+c'est le voisinage d'un film qui apprend quelque chose. Le point survolé prend un
+anneau ambre, ses liens s'allument, son titre et son nombre de liens s'affichent
+à côté. On glisse un point pour le déplacer, le fond pour se déplacer, la
+molette pour zoomer, et un clic ouvre la fiche.
+
+**La taille d'un point dit son nombre de liens, jamais sa qualité** — et la
+légende l'écrit, sinon la taille raconterait une histoire inventée.
+
+#### Une seule règle de topologie
+
+Dans un groupe — les films d'un même réalisateur — on ne relie pas tout le monde
+à tout le monde : **chacun est relié au premier du groupe**. Dix films feraient
+45 traits en clique et 9 en étoile. La clique est un plat de spaghettis ; l'étoile
+est une grappe qu'on lit d'un coup d'œil.
+
+La position de départ est **déterministe** (spirale d'or) : deux ouvertures du
+même mur donnent la même image. Un graphe qui se réorganise au hasard à chaque
+fois ne se reconnaît pas.
+
+#### Trois défauts, tous trouvés à l'écran
+
+1. **Le canvas était vide alors que la mesure annonçait « 2 films ».** La
+   simulation rappelait les points vers le **milieu du canvas**, pendant que la
+   caméra les cherchait autour de **l'origine**. Les nœuds se rangeaient autour
+   de (720, 292) et la caméra regardait vers (0, 0). Le graphe vit maintenant
+   dans son propre espace et se rappelle vers son **barycentre** ; la vue n'est
+   qu'une caméra.
+2. **Le graphe par genre s'effondrait en tas.** Quarante films, 93 liens, cinq
+   affiches visibles. Deux causes : la longueur de repos était un facteur fixe
+   (791 unités sur un canvas de 585 px de haut — les points ne pouvaient pas
+   tenir à cette distance, donc les ressorts gagnaient), et un film à vingt liens
+   subissait vingt fois le même ressort. Le repos se déduit maintenant de la
+   **surface disponible par point**, et chaque nœud divise son ressort par la
+   racine de son nombre de liens.
+3. **Il débordait par le bas.** Le cadrage était calculé **avant** que la
+   simulation n'écarte les points : on mesurait un graphe qui n'existait pas
+   encore. Il suit maintenant le graphe qui grandit, tant que personne n'a
+   touché à la caméra.
+
+#### Sur un mur maigre, le graphe propose au lieu de se plaindre
+
+Sur un mur de films populaires, personne ne partage de réalisateur : c'est
+normal, et ce n'est pas une panne. Mais deux points n'apprennent rien. Le graphe
+mesure donc les quatre critères, et **propose** les plus fournis sous forme de
+boutons — « Relier par Genre (40) ».
+
+Il ne bascule **jamais** tout seul : changer un critère sous les yeux est la
+meilleure façon de faire croire que l'application fait n'importe quoi. Le bouton
+est là, on décide.
+
+#### Ce qui est vérifié
+
+`verif-graphe.mjs` ne se contente pas des attributs de donnée. Les affiches TMDB
+n'envoient pas d'en-tête CORS, donc le canvas est « souillé » et `getImageData`
+est interdit : le test prend une **capture d'écran**, vide le canvas, en reprend
+une, et exige que les deux diffèrent. Sans cela, « 2 films dans le graphe » et un
+canvas vide passaient pour la même chose — c'est exactement ce qui est arrivé.
+
+Éprouvés aussi : le mur s'efface et ne revient qu'au retour, quatre critères avec
+un seul allumé à la fois, le survol qui réagit, le clic qui ouvre la bonne fiche,
+aucun débordement, et sur téléphone le canvas qui est **réellement peint**.
+
+#### Reste ouvert
+
+- **Le nombre de points est plafonné à 26 sur téléphone** (90 sur ordinateur).
+  Ce n'est pas une limite technique : à quarante affiches dans 390 px, les points
+  font onze pixels, on ne peut ni les viser ni les lire. Le graphe dit combien il
+  en a examinés sur combien.
+- **La disposition n'est pas mémorisée** : revenir au graphe replace les points
+  au même endroit, mais un déplacement à la main est perdu.
+- **On ne peut pas filtrer depuis le graphe** : cliquer un point ouvre la fiche,
+  ça ne restreint pas le mur à son voisinage. C'est la suite naturelle.
+
+### La recherche avancée
+
+Non pas *ce que le film est*, mais **qui l'a fait** : une personne (Réalisation,
+Production, Jeu) ou une société (Studio, Chaîne).
+
+#### Ce que TMDB sait vraiment faire, et c'est mesuré
+
+- **`with_crew` ne distingue pas le métier.** Christopher Nolan a 19 crédits de
+  réalisateur et 15 de producteur ; `with_crew=525` en renvoie **31**, les deux
+  mélangés. Kathleen Kennedy, qui a produit 79 films et n'en a réalisé aucun,
+  ressort exactement comme un réalisateur.
+- **`with_crew` est purement ignoré sur `/discover/tv`.** Trois personnes
+  différentes — Vince Gilligan, Christopher Nolan, et un identifiant qui n'existe
+  pas — renvoient le même total : 20 001, c'est-à-dire tout.
+- **La recherche de société classe sans rapport avec le contenu.** « a24 »
+  renvoie **six** sociétés nommées A24 : 223, 9, 5, 1, 0 et 0 titres. Choisir la
+  première rendait un mur vide sans que rien ne l'explique.
+
+#### Une filmographie n'est pas une recherche
+
+C'est une **liste finie, complète et datée**, et TMDB la donne d'un seul coup
+dans `/person/{id}/movie_credits`. Une requête, toute l'œuvre — avec l'affiche,
+les genres, la note et l'année de chaque titre. Le métier y est écrit noir sur
+blanc, donc le filtrage est **exact** au lieu d'approché.
+
+La personne remplace donc les **sources** de la recherche — exactement comme une
+saga — et **le reste des filtres continue de s'appliquer par-dessus**, dans
+`accept` : genre, décennie, univers, catégories d'anime. Sans cela, choisir un
+réalisateur aurait effacé en silence tout ce qu'on venait de régler.
+
+Et la recherche par texte **cherche dedans** : taper « dark » chez Nolan donne
+ses films qui contiennent « dark », pas un nouveau départ dans tout le catalogue.
+
+#### Les sociétés se classent par ce qu'elles contiennent
+
+Chaque candidat est compté — films plus séries — avant d'être proposé, et la
+liste est triée du plus fourni au moins fourni. Une société sans aucun titre
+reste **visible**, grisée et non choisissable : la cacher ferait croire que la
+recherche n'a rien trouvé.
+
+#### On rebondit depuis une fiche
+
+« Réalisation : Christopher Nolan » est **cliquable**. Voir un nom et ne pas
+pouvoir demander ses autres films, c'est une information qu'on donne et qu'on
+reprend aussitôt. Même chose pour la première société de production. Le clic
+**quitte les lieux** — liste, « pour toi », collection, saga, recherche en cours —
+mais **garde les filtres qui se composent** : genre, univers, décennie, langue.
+
+#### Ce qui est vérifié
+
+`verif-avance.mjs` ne se contente pas qu'un champ existe : il exige **la bonne
+liste**. Chez Christopher Nolan, « Réalisation » doit rendre **19** films — ni
+les 20 productions, ni les 47 rôles — et « Production » exactement 20, dont
+*Man of Steel*, qu'il n'a pas réalisé. Vérifiés aussi : le comptage et le
+classement des sociétés, la combinaison avec un genre, le retrait, et sur
+téléphone l'absence de débordement et des cibles de 32 px minimum.
+
+#### Reste ouvert
+
+- **Une seule personne à la fois par rôle.** Le modèle accepte plusieurs
+  personnes, l'interface n'en ajoute qu'une ; « Nolan ou Villeneuve » n'est pas
+  encore demandable.
+- **Les séries n'ont pas de réalisateur** : une série a des réalisateurs
+  d'*épisodes*, celui qui la porte est le **créateur**. C'est ce qu'on cherche, et
+  l'interface le dit — mais on ne peut pas demander « les épisodes réalisés par
+  untel ».
+- **Le jeu n'est pas vérifiable par métier** : `with_cast` est exact par
+  définition, on ne peut pas distinguer un premier rôle d'un caméo.
+
+### La régression que les tests ont attrapée
+
+En câblant la recherche avancée, une ligne est devenue `const ids = []` au lieu
+de `let ids = []` — et ce tableau est réaffecté juste en dessous. Résultat :
+**toute recherche par thème levait une « Assignment to constant variable »**.
+Donc toutes les collections, et tous les sous-genres.
+
+Les tests unitaires passaient (323), `verif-anime.mjs` passait, `verif-avance.mjs`
+passait — aucun ne passe par un thème. C'est `verif-coherence.mjs`, qui ouvre une
+collection en plein chargement, qui l'a vu : 0 titre au lieu de 40.
+
+Rappel : **un test qui passe ne dit que ce qu'il regarde.** C'est pour ça que la
+suite de régression se relance en entier, même quand on croit avoir touché à
+côté.
+
+---
+
+## 12. Comment on vérifie
 
 Ce qui compte n'est pas qu'un test passe, c'est que l'application fasse ce qu'on
 croit qu'elle fait. Les scripts de `.superpowers/verify/` pilotent Chrome en
@@ -732,6 +919,8 @@ node verif-anime.mjs              # l'univers anime, l'exclusion, les collection
 node verif-anime-table.mjs        # les 78 catégories d'anime, contre TMDB
 node verif-collections.mjs        # les 72 collections rendent-elles des films ?
 node sonde-mots-cles.mjs          # aucun mot-clé déclaré n'est mort
+node verif-avance.mjs             # réalisateur, producteur, studio — la bonne liste
+node verif-graphe.mjs             # la vue graphe : ce qu'elle calcule ET ce qu'elle peint
 ```
 
 Les quatre derniers interrogent TMDB avec la clé locale : ils ne testent pas du

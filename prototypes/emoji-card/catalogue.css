@@ -78,6 +78,55 @@
    zones de défilement imbriquées forment un piège au doigt — on fait glisser
    l'une, c'est l'autre qui bouge. */
 #refinements #categories-anime { display: block; }
+
+/* --- La recherche avancée ------------------------------------------------ */
+
+#avance { display: grid; gap: 18px; }
+.avance__bloc { display: grid; gap: 8px; }
+.avance__tete { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.avance__titre { font-size: 12px; font-weight: 500; color: var(--c-text); }
+.avance__bloc input { width: 100%; }
+#refinements #personne-role, #refinements #societe-type { display: flex; flex-wrap: wrap; gap: 4px; }
+#refinements .filter--mini { min-height: 30px; padding: 0 9px; font-size: 11px; }
+#avance-actifs { display: flex; flex-wrap: wrap; gap: 6px; }
+#personne-resultats, #societe-resultats { display: grid; gap: 4px; max-height: 220px; overflow-y: auto; scrollbar-width: thin; }
+
+/* Un résultat de recherche : on montre le visage ou le logo, parce qu'entre
+   deux personnes du même nom c'est la seule chose qui tranche d'un coup d'œil. */
+.avance__item { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 5px 9px; border: 1px solid #f1ede410; border-radius: 3px; background: #f1ede405; color: var(--c-text); text-align: left; cursor: pointer; }
+.avance__item:hover { border-color: var(--c-accent); }
+.avance__item[aria-pressed='true'] { opacity: .5; cursor: default; }
+.avance__item img { width: 32px; height: 40px; border-radius: 2px; object-fit: cover; flex-shrink: 0; }
+.avance__item img.avance__logo { width: 40px; height: 32px; object-fit: contain; background: #f1ede40a; }
+.avance__item span { display: grid; gap: 2px; min-width: 0; }
+.avance__item strong { font-size: 12px; font-weight: 600; }
+.avance__item small { font-size: 10px; color: var(--c-text-dim); }
+/* Un résultat sans titre reste visible : le cacher ferait croire que la
+   recherche n'a rien trouvé. On dit pourquoi il ne mène nulle part. */
+.avance__item--vide { opacity: .45; cursor: not-allowed; }
+.avance__pastille { min-height: 30px; padding: 0 10px; border: 1px solid #e5b46960; border-radius: 3px; background: #e5b46918; color: var(--c-accent); font: 11px var(--ff-text); cursor: pointer; }
+
+/* --- Le graphe ----------------------------------------------------------- */
+
+/* Le graphe prend la place du mur : même hauteur, même défilement général. */
+#graph { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+#graph-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 0 var(--catalogue-gutter) 10px; }
+#graph-liens { display: flex; flex-wrap: wrap; gap: 4px; }
+#graph-etat { font-size: 11px; color: var(--c-text-dim); }
+#graph-suggestions { display: flex; flex-wrap: wrap; gap: 6px; }
+#graph-suggestions:empty { display: none; }
+#graph-recentrer { margin-left: auto; min-height: 34px; }
+#graph-toile { flex: 1; min-height: 0; width: 100%; display: block; touch-action: none; cursor: grab; background: radial-gradient(circle at 50% 45%, #151b25 0%, #0d1015 70%); }
+#graph-toile:focus-visible { outline: 2px solid var(--c-accent); outline-offset: -2px; }
+#graph-legende { margin: 0; padding: 10px var(--catalogue-gutter); font-size: 11px; line-height: 1.5; color: var(--c-text-dim); border-top: 1px solid #f1ede410; }
+
+@media(max-width:760px) {
+  #graph-bar { padding-bottom: 8px; }
+  #graph-bar .eyebrow { display: none; }
+  #graph-recentrer { margin-left: 0; }
+  #graph-legende { display: none; }
+  #personne-resultats, #societe-resultats { max-height: 170px; }
+}
 .refinements-foot { position: sticky; bottom: -24px; display: flex; gap: 8px; margin: 18px -24px -24px; padding: 16px 24px; background: #131820; border-top: 1px solid #f1ede418; }
 .primary { background: var(--c-accent); border: 0; color: var(--c-bg); }
 .primary:hover { background: #edc489; color: var(--c-bg); }
@@ -225,8 +274,7 @@
 /* Soixante-douze collections ne tiennent pas dans un défilement horizontal :
    seize mètres de tuiles, on ne trouve rien. Le panneau devient une surface
    qu'on parcourt verticalement, rangée par familles. */
-#collections { display: block; max-height: min(58vh, 560px); overflow-y: auto; overscroll-behavior: contain; padding: 0 var(--catalogue-gutter) 20px; scrollbar-width: thin; }
-.collections-famille { margin-bottom: 22px; }
+#collections { display: block; max-height: min(58vh, 560px); overflow-y: auto; overscroll-behavior: contain; padding: 0 var(--catalogue-gutter) 20px; scrollbar-width: thin; }.collections-famille { margin-bottom: 22px; }
 .collections-famille__tete { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
 .collections-famille__titre { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; }
 .collections-famille__dit { font-size: 11px; color: var(--c-text-dim); }

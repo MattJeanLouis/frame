@@ -7,6 +7,14 @@ import {
   UNIVERS, FAMILLES_ANIME, CATEGORIES_ANIME, universValide, estAnime,
   paramsUnivers, libelleCategorie, chercherCategories
 } from './anime.js';
+/* Les gens et les sociétés : une filmographie est une liste finie, pas une
+   recherche. Voir src/credits.js pour ce qui a été mesuré. */
+import {
+  ROLES, roleValide, libelleRole, creditsPourRole, classerSocietes,
+  libelleSociete, societeUtilisable, TYPE_SOCIETE, typeSocieteValide
+} from '../../src/credits.js';
+import { PLAFOND as PLAFOND_GRAPHE } from '../../src/graphe.js';
+import { initGraphe, montrerGraphe, cacherGraphe, relancer as relancerGraphe } from './graphe.js';
 // FRAME v2 — carte-film. Prototype jetable.
 //
 // Trois rôles pour l'emoji, trois contenants distincts (spec v2 §2) :
@@ -18,7 +26,7 @@ import {
 // que Matt a réellement ressenti (spec v2 §4).
 
 import { STICKERS, STICKER_BY_ID, DRAWERS, twemojiUrl } from '../../src/stickers.js';
-import { createClient, detectAuth, API_BASE } from '../../src/tmdb.js';
+import { createClient, detectAuth, API_BASE, posterUrl } from '../../src/tmdb.js';
 import { createDemoClient, DEMO_POOLS } from '../../src/demo.js';
 import { loadCredential, getKeywordCache, setKeywordId } from '../../src/storage.js';
 import { selectMovies } from '../../src/engine.js';
@@ -127,6 +135,14 @@ const state = {
   /* Les catégories d'anime choisies — des identifiants de mots-clés TMDB, en
      OU. Voir anime.js : ces mots-là n'existent nulle part ailleurs. */
   categoriesAnime: [],
+  /* La recherche avancée : non pas ce que le film EST, mais QUI l'a fait.
+     `gens` porte des personnes, `societes` des studios ou des chaînes. */
+  gens: [],
+  rolePersonne: 'realisation',
+  societes: [],
+  typeSociete: 'studio',
+  /* Par quoi les films se relient dans le graphe. */
+  lienGraphe: 'realisateur',
   /* `null` = on n'est pas dans sa liste. `'tout'` = toute la liste.
      Un état de MARKS = seulement ceux-là. */
   liste: null,
@@ -486,9 +502,17 @@ async function fetchDetail(film) {
   }
 
   if (credits) {
-    film.director = (credits.crew || []).find(c => c.job === 'Director')?.name
-      || (detail?.created_by || [])[0]?.name || '';
+    const realisateur = (credits.crew || []).find(c => c.job === 'Director');
+    film.director = realisateur?.name || (detail?.created_by || [])[0]?.name || '';
+    /* On garde l'IDENTIFIANT, pas seulement le nom : c'est lui qui permet de
+       rebondir sur « ses autres films » depuis la fiche. Un nom sans
+       identifiant obligerait à une recherche par texte, qui trouverait
+       n'importe qui. */
+    film.directorId = realisateur?.id || (detail?.created_by || [])[0]?.id || null;
     film.cast = (credits.cast || []).slice(0, 5).map(c => c.name);
+  }
+  if (detail?.production_companies) {
+    film.companyIds = detail.production_companies.map(c => c.id);
   }
 
   const fr = providers?.results?.FR;
@@ -1122,6 +1146,9 @@ async function setMode(id) {
   state.mode = id;
   appEl.className = 'mode-' + id;
   renderModes();
+  /* Le graphe n'existe qu'au mur : « Moments » est un fil vertical, il n'y a
+     pas de liens à y tracer. On le cache, et le sélecteur d'affiches le dit. */
+  majAffichageGraphe();
   announce(MODES.find(m => m.id === id)?.label || '');
   await show();          // et on y retourne
   fadeIn();              // sans que la bascule ne fasse claquer l'écran
@@ -1144,7 +1171,7 @@ function updateCollectionHeading() {
     : state.saga ? 'La saga' : titreUnivers || (state.mode === 'reel' ? 'En mouvement' : 'Le catalogue');
   el('collection-title').textContent = title;
   el('collection-note').textContent = state.query ? '« ' + state.query + ' »' : state.liste ? (markById(state.liste)?.label || 'Tous tes titres') : '';
-  const count = state.genres.length + state.tris.length + (state.type !== 'all' ? 1 : 0) + (state.sousGenre ? 1 : 0) + [state.decade, state.runtimeMax, state.language].filter(Boolean).length + (state.minimumVotes !== '0' ? 1 : 0) + (state.univers !== 'tout' ? 1 : 0) + state.categoriesAnime.length;
+  const count = state.genres.length + state.tris.length + (state.type !== 'all' ? 1 : 0) + (state.sousGenre ? 1 : 0) + [state.decade, state.runtimeMax, state.language].filter(Boolean).length + (state.minimumVotes !== '0' ? 1 : 0) + (state.univers !== 'tout' ? 1 : 0) + state.categoriesAnime.length + state.gens.length + state.societes.length;
   el('filter-count').textContent = count ? String(count) : '';
   const active = el('active-filters');
   const tags = [];
@@ -1168,6 +1195,10 @@ function updateCollectionHeading() {
   }
   for (const id of state.genres) tag(GENRE_PAR_ID.get(id)?.label || id, () => { state.genres = state.genres.filter(x => x !== id); state.sousGenre = null; });
   for (const id of state.categoriesAnime) tag(libelleCategorie(id), () => { state.categoriesAnime = state.categoriesAnime.filter(x => x !== id); });
+  /* Les gens et les sociétés se retirent comme le reste — et l'étiquette dit
+     le MÉTIER, parce qu'un nom sans métier ne dit pas ce qu'on a demandé. */
+  for (const p of state.gens) tag(p.nom + ' · ' + libelleRole(state.rolePersonne), () => { state.gens = state.gens.filter(x => x.id !== p.id); });
+  for (const s of state.societes) tag(s.nom + ' · ' + (state.typeSociete === 'chaine' ? 'Chaîne' : 'Studio'), () => { state.societes = state.societes.filter(x => x.id !== s.id); });
   if (state.sousGenre) tag(topicLabel(state.sousGenre), () => { state.sousGenre = null; });
   for (const id of state.tris) tag(triParId(id)?.nom || id, () => { state.tris = state.tris.filter(x => x !== id); });
   for (const id of state.picked) tag(STICKER_BY_ID.get(id)?.label || id, () => { state.picked = state.picked.filter(x => x !== id); });
@@ -1214,9 +1245,17 @@ function initCatalogueLayout() {
     state.collection = null; state.saga = null; state.decade = ''; state.runtimeMax = ''; state.language = ''; state.minimumVotes = '0'; syncDiscoveryControls();
     state.type = 'all'; state.genres = []; state.sousGenre = null; state.tris = []; state.picked = []; state.liste = null; state.forYou = false; state.dejaVu = new Set();
     state.univers = 'tout'; state.categoriesAnime = [];
+    state.gens = []; state.societes = []; state.rolePersonne = 'realisation'; state.typeSociete = 'studio';
+    el('search-personne').value = ''; el('search-societe').value = '';
+    el('personne-resultats').hidden = true; el('societe-resultats').hidden = true;
+    renderRoles(); renderTypesSociete(); renderAvance();
     renderRangees(); renderListe(); renderPalette(); renderQueryChips(); show();
   });
-  el('catalogue-density').addEventListener('change', event => { appEl.dataset.density = event.target.value; closeCataloguePreview(); });
+  el('catalogue-density').addEventListener('change', event => {
+    appEl.dataset.density = event.target.value;
+    closeCataloguePreview();
+    majAffichageGraphe();
+  });
   const immersive = el('btn-immersive');
   immersive.addEventListener('click', () => {
     const on = document.body.classList.toggle('catalogue-immersive');
@@ -1289,7 +1328,20 @@ function collectionEncoreValide() {
     && !state.query.trim();
 }
 
-function show() {
+/**
+ * Redessiner ce qu'on regarde — et, si c'est le graphe, le refaire.
+ *
+ * Le graphe lit le mur : quand le mur change, il doit se refaire. On ne le
+ * refait QUE s'il est à l'écran, parce que c'est la partie chère — il va
+ * chercher les réalisateurs et les castings de tout ce qu'il affiche.
+ */
+async function show() {
+  const fin = montrer();
+  if (fin && typeof fin.then === 'function') await fin;
+  if (appEl.dataset.density === 'graph' && state.mode === 'film') relancerGraphe();
+}
+
+function montrer() {
   if (state.collection && !collectionEncoreValide()) state.collection = null;
   invalidateDiscovery();
   updateCollectionHeading();
@@ -2027,6 +2079,255 @@ function renderCategoriesAnime() {
   host.replaceChildren(frag);
 }
 
+/* --- La recherche avancée : par qui le film existe ------------------------ */
+
+/**
+ * Le métier se choisit AVANT la personne.
+ *
+ * Un même nom ne donne pas du tout la même liste selon le métier : Christopher
+ * Nolan a 19 films comme réalisateur et 20 comme producteur, et ce ne sont pas
+ * les mêmes. Proposer la personne d'abord ferait croire qu'un nom suffit.
+ */
+function renderRoles() {
+  const host = el('personne-role');
+  const frag = document.createDocumentFragment();
+  for (const r of ROLES) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'filter filter--mini';
+    b.textContent = r.label;
+    b.title = r.dit;
+    b.setAttribute('aria-pressed', String(state.rolePersonne === r.id));
+    b.addEventListener('click', () => {
+      state.rolePersonne = r.id;
+      renderRoles();
+      /* L'étiquette dit le métier : la laisser sur l'ancien ferait croire que
+         rien n'a changé alors que la liste, elle, a changé. */
+      renderAvance();
+      if (state.gens.length) { state.dejaVu = new Set(); scheduleFilter(); }
+    });
+    frag.append(b);
+  }
+  host.replaceChildren(frag);
+}
+
+function renderTypesSociete() {
+  const host = el('societe-type');
+  const frag = document.createDocumentFragment();
+  for (const t of TYPE_SOCIETE) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'filter filter--mini';
+    b.textContent = t.label;
+    b.title = t.dit;
+    b.setAttribute('aria-pressed', String(state.typeSociete === t.id));
+    b.addEventListener('click', () => {
+      if (state.typeSociete === t.id) return;
+      state.typeSociete = t.id;
+      /* Studio et chaîne ne se rangent pas dans le même paramètre TMDB : les
+         garder tous les deux ferait chercher A24 comme une chaîne. */
+      state.societes = [];
+      renderTypesSociete(); renderAvance();
+      el('societe-resultats').hidden = true;
+      state.dejaVu = new Set();
+      scheduleFilter();
+    });
+    frag.append(b);
+  }
+  host.replaceChildren(frag);
+}
+
+/** Chercher une personne, et l'ajouter d'un clic. */
+let timerPersonne = 0;
+async function chercherPersonnes() {
+  const champ = el('search-personne');
+  const host = el('personne-resultats');
+  const q = champ.value.trim();
+  if (q.length < 2) { host.hidden = true; host.replaceChildren(); return; }
+  host.hidden = false;
+  host.replaceChildren(note('Recherche…'));
+  let donnees;
+  try { donnees = await api('/search/person', { query: q, include_adult: false }); }
+  catch { host.replaceChildren(note('TMDB n’a pas répondu.')); return; }
+  if (champ.value.trim() !== q) return;   // une frappe plus récente a pris la main
+  const gens = (donnees.results || []).slice(0, 8);
+  if (!gens.length) { host.replaceChildren(note('Personne trouvée. Essaie l’orthographe d’origine.')); return; }
+  const frag = document.createDocumentFragment();
+  for (const p of gens) {
+    const deja = state.gens.some(g => g.id === p.id);
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'avance__item';
+    b.setAttribute('aria-pressed', String(deja));
+    b.disabled = deja;
+    if (p.profile_path) {
+      const img = document.createElement('img');
+      img.src = posterUrl(p.profile_path, 'w92');
+      img.alt = ''; img.loading = 'lazy';
+      b.append(img);
+    }
+    const texte = document.createElement('span');
+    const nom = document.createElement('strong');
+    nom.textContent = p.name;
+    const quoi = document.createElement('small');
+    quoi.textContent = [p.known_for_department, (p.known_for || []).map(x => x.title || x.name).filter(Boolean).slice(0, 2).join(', ')]
+      .filter(Boolean).join(' · ');
+    texte.append(nom, quoi);
+    b.append(texte);
+    b.addEventListener('click', () => {
+      state.gens = [...state.gens, { id: p.id, nom: p.name }];
+      champ.value = ''; host.hidden = true; host.replaceChildren();
+      renderAvance(); state.dejaVu = new Set(); scheduleFilter();
+      announce(p.name + ' ajouté en ' + libelleRole(state.rolePersonne).toLowerCase() + '.');
+    });
+    frag.append(b);
+  }
+  host.replaceChildren(frag);
+}
+
+/**
+ * Chercher une société — et dire COMBIEN de titres chacune porte.
+ *
+ * C'est nécessaire, pas cosmétique : la recherche « a24 » renvoie trois
+ * sociétés nommées A24, qui contiennent 0, 1 et 176 films. TMDB les classe
+ * sans rapport avec leur contenu. Sans le compte, on choisit la première et on
+ * obtient un mur vide sans que rien ne l'explique.
+ */
+let timerSociete = 0;
+async function chercherSocietes() {
+  const champ = el('search-societe');
+  const host = el('societe-resultats');
+  const q = champ.value.trim();
+  if (q.length < 2) { host.hidden = true; host.replaceChildren(); return; }
+  host.hidden = false;
+  host.replaceChildren(note('Recherche…'));
+  let donnees;
+  try { donnees = await api('/search/company', { query: q }); }
+  catch { host.replaceChildren(note('TMDB n’a pas répondu.')); return; }
+  if (champ.value.trim() !== q) return;
+  const candidates = (donnees.results || []).slice(0, 6);
+  if (!candidates.length) { host.replaceChildren(note('Aucune société avec ce nom.')); return; }
+
+  host.replaceChildren(note('Comptage des titres…'));
+  const chaine = state.typeSociete === 'chaine';
+  const avecCompte = await Promise.all(candidates.map(async c => {
+    const [film, serie] = await Promise.all([
+      chaine ? null : api('/discover/movie', { with_companies: c.id }).catch(() => null),
+      api('/discover/' + (chaine ? 'tv' : 'tv'), chaine ? { with_networks: c.id } : { with_companies: c.id }).catch(() => null)
+    ]);
+    return { id: c.id, nom: c.name, logo: c.logo_path, compte: (film?.total_results || 0) + (serie?.total_results || 0) };
+  }));
+  if (champ.value.trim() !== q) return;
+
+  const frag = document.createDocumentFragment();
+  for (const s of classerSocietes(avecCompte)) {
+    const deja = state.societes.some(x => x.id === s.id);
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'avance__item' + (societeUtilisable(s) ? '' : ' avance__item--vide');
+    b.setAttribute('aria-pressed', String(deja));
+    b.disabled = deja || !societeUtilisable(s);
+    if (s.logo) {
+      const img = document.createElement('img');
+      img.src = posterUrl(s.logo, 'w92');
+      img.alt = ''; img.loading = 'lazy'; img.className = 'avance__logo';
+      b.append(img);
+    }
+    const texte = document.createElement('span');
+    const nom = document.createElement('strong');
+    nom.textContent = s.nom;
+    const quoi = document.createElement('small');
+    quoi.textContent = libelleSociete(s).replace(s.nom + ' — ', '');
+    texte.append(nom, quoi);
+    b.append(texte);
+    if (societeUtilisable(s)) {
+      b.addEventListener('click', () => {
+        state.societes = [...state.societes, { id: s.id, nom: s.nom }];
+        champ.value = ''; host.hidden = true; host.replaceChildren();
+        renderAvance(); state.dejaVu = new Set(); scheduleFilter();
+        announce(s.nom + ' ajouté.');
+      });
+    }
+    frag.append(b);
+  }
+  host.replaceChildren(frag);
+}
+
+/** Les personnes et sociétés retenues, avec de quoi les retirer. */
+function renderAvance() {
+  const host = el('avance-actifs');
+  const frag = document.createDocumentFragment();
+  for (const p of state.gens) {
+    frag.append(pastille(p.nom + ' · ' + libelleRole(state.rolePersonne), () => {
+      state.gens = state.gens.filter(x => x.id !== p.id);
+      renderAvance(); state.dejaVu = new Set(); scheduleFilter();
+    }, 'Retirer ' + p.nom));
+  }
+  for (const s of state.societes) {
+    frag.append(pastille(s.nom + ' · ' + (state.typeSociete === 'chaine' ? 'Chaîne' : 'Studio'), () => {
+      state.societes = state.societes.filter(x => x.id !== s.id);
+      renderAvance(); state.dejaVu = new Set(); scheduleFilter();
+    }, 'Retirer ' + s.nom));
+  }
+  host.replaceChildren(frag);
+}
+
+function note(texte) {
+  const p = document.createElement('p');
+  p.className = 'row__note';
+  p.textContent = texte;
+  return p;
+}
+
+function pastille(texte, retirer, label) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'avance__pastille';
+  b.textContent = texte + ' ×';
+  b.setAttribute('aria-label', label);
+  b.addEventListener('click', retirer);
+  return b;
+}
+
+/**
+ * Rebondir sur l'œuvre de quelqu'un, depuis n'importe où.
+ *
+ * On QUITTE les lieux — une liste, « pour toi », une collection, une saga, une
+ * recherche en cours : sans cela, `show()` resterait sur eux et le clic ne
+ * ferait rien de visible. On GARDE les filtres qui se composent — genre,
+ * univers, décennie, langue — parce qu'ils s'appliquent par-dessus une
+ * filmographie et que les effacer ferait perdre ce qu'on venait de régler.
+ */
+function ouvrirFilmographie(nom, id, role = 'realisation') {
+  if (!id) return;
+  closeCard();
+  state.gens = [{ id, nom }];
+  state.rolePersonne = roleValide(role);
+  state.societes = [];
+  state.saga = null; state.collection = null;
+  state.query = ''; el('search').value = ''; el('search-clear').hidden = true;
+  state.liste = null; state.forYou = false; state.picked = [];
+  state.dejaVu = new Set();
+  renderRangees(); renderRoles(); renderTypesSociete(); renderAvance(); renderListe();
+  show();
+  announce(nom + ' — ' + libelleRole(state.rolePersonne).toLowerCase() + '.');
+}
+
+function ouvrirSociete(nom, id) {
+  if (!id) return;
+  closeCard();
+  state.societes = [{ id, nom }];
+  state.typeSociete = 'studio';
+  state.gens = [];
+  state.saga = null; state.collection = null;
+  state.query = ''; el('search').value = ''; el('search-clear').hidden = true;
+  state.liste = null; state.forYou = false; state.picked = [];
+  state.dejaVu = new Set();
+  renderRangees(); renderRoles(); renderTypesSociete(); renderAvance(); renderListe();
+  show();
+  announce(nom + ' — productions.');
+}
+
 /**
  * La rangée « Ma liste ».
  *
@@ -2167,6 +2468,7 @@ function scheduleFilter(delai = DELAI_CLIC) {
 const filtresActifs = () =>
   Boolean(state.query.trim()) || state.type !== 'all' || state.genres.length > 0 ||
   state.univers !== 'tout' || state.categoriesAnime.length > 0 ||
+  state.gens.length > 0 || state.societes.length > 0 ||
   state.tris.some(id => id !== 'populaire');
 
 /**
@@ -2202,6 +2504,26 @@ function initDiscoveryControls() {
   /* Chercher une catégorie ne relance pas la requête : on ne fait que
      restreindre la liste sous les yeux. C'est un filtre de LECTURE. */
   el('anime-search').addEventListener('input', renderCategoriesAnime);
+
+  /* La recherche avancée. Deux anti-rebond différents : chercher un nom est
+     une hésitation (on ne veut pas une requête par lettre), mais la liste doit
+     tomber vite — 260 ms, c'est le temps qu'on met à lire ce qu'on a tapé. */
+  el('search-personne').addEventListener('input', () => {
+    clearTimeout(timerPersonne);
+    timerPersonne = setTimeout(chercherPersonnes, 260);
+  });
+  el('search-societe').addEventListener('input', () => {
+    clearTimeout(timerSociete);
+    timerSociete = setTimeout(chercherSocietes, 260);
+  });
+  for (const champ of ['search-personne', 'search-societe']) {
+    el(champ).addEventListener('keydown', e => {
+      if (e.key !== 'Escape') return;
+      /* Échap vide le champ AVANT de fermer les filtres : on quitte ce qu'on
+         est en train de faire, pas le panneau entier. */
+      if (e.target.value) { e.target.value = ''; e.stopPropagation(); }
+    });
+  }
   el('load-next').addEventListener('click', () => {
     if (discovery) loadMore(); else show();
   });
@@ -2311,7 +2633,17 @@ async function runSearch(_page = 1, { append = false } = {}) {
       discoveryIntent = intent ? 'Thèmes : ' + intent.label : '';
       const text = intent ? '' : query;
       const filters = { decade: state.decade, runtime: Number(state.runtimeMax), language: state.language, votes: Number(state.minimumVotes) };
-      const movieKinds = state.type === 'all' ? ['movie','tv'] : [state.type];
+      let movieKinds = state.type === 'all' ? ['movie','tv'] : [state.type];
+      /* Une chaîne ne diffuse pas des films. Chercher HBO en « Tout » aurait
+         interrogé les films pour rien, et TMDB y aurait répondu n'importe quoi.
+         Le filtre de type cède donc devant la nature du critère — et l'interface
+         le dit, plutôt que de rendre un mur vide sans explication. */
+      const chercheChaine = state.typeSociete === 'chaine' && state.societes.length > 0;
+      if (chercheChaine && !movieKinds.includes('tv')) movieKinds = ['tv'];
+      /* `let`, pas `const` : ce tableau est réaffecté juste en dessous. En
+         `const`, chaque recherche par thème — donc chaque collection —
+         levait une « Assignment to constant variable », et le mur restait
+         vide sans que rien n'explique pourquoi. */
       let ids = [];
       if (topic) {
         if (topicMemory.has(topic)) ids = topicMemory.get(topic);
@@ -2324,6 +2656,15 @@ async function runSearch(_page = 1, { append = false } = {}) {
           const data = await api(path, {}, options);
           return { results: data.parts || [], total_pages: 1, total_results: data.parts?.length || 0 };
         }
+        /* Une filmographie arrive en UNE réponse : le métier y est écrit, on
+           filtre dessus et on rend une page unique. `page` est ignoré — il n'y
+           a rien à paginer, la liste est complète. */
+        if (path.startsWith('/person/')) {
+          const donnees = await api(path, {}, options).catch(() => null);
+          const kind = path.includes('tv_credits') ? 'tv' : 'movie';
+          const items = donnees ? creditsPourRole(donnees, params.__role, kind) : [];
+          return { results: items, total_pages: 1, total_results: items.length };
+        }
         return api(path, params, options);
       };
       /* Les mots-clés se réunissent : un thème de sous-genre et les catégories
@@ -2334,6 +2675,11 @@ async function runSearch(_page = 1, { append = false } = {}) {
          « japonais » autrement qu'en le redisant. */
       const universParams = paramsUnivers(state.univers);
       const animeSeul = state.univers === 'anime';
+      /* Les sociétés : deux vocabulaires, deux paramètres. Un studio produit
+         (`with_companies`), une chaîne diffuse (`with_networks`), et le second
+         n'existe que pour les séries. */
+      const studios = state.typeSociete === 'studio' ? state.societes.map(s => s.id) : [];
+      const chaines = state.typeSociete === 'chaine' ? state.societes.map(s => s.id) : [];
       let sources = movieKinds.flatMap(kind => {
         const mapped = genres.map(id => GENRES_TMDB[id]?.[kind === 'movie' ? 'film' : 'serie']).filter(Boolean);
         if (mapped.length !== genres.length) return [];
@@ -2341,11 +2687,13 @@ async function runSearch(_page = 1, { append = false } = {}) {
            doit pas faire croire qu'un genre est introuvable dans ce type. */
         const avecUnivers = [...new Set([...mapped, ...(universParams.with_genres || [])])];
         const dateKey = kind === 'movie' ? 'primary_release_date' : 'first_air_date';
-        return [{ kind, path: (text ? '/search/' : '/discover/') + kind, params: text ? { query: text, include_adult: false } : {
+        return [{ kind, path: (text && !state.gens.length ? '/search/' : '/discover/') + kind, params: text && !state.gens.length ? { query: text, include_adult: false } : {
           include_adult: false, sort_by: triServeur(kind) || 'popularity.desc',
           with_genres: avecUnivers.join(',') || undefined,
           with_keywords: mots.join('|') || undefined,
           without_keywords: universParams.without_keywords || undefined,
+          with_companies: studios.length ? studios.join('|') : undefined,
+          with_networks: kind === 'tv' && chaines.length ? chaines.join('|') : undefined,
           'vote_count.gte': filters.votes || undefined,
           with_original_language: animeSeul ? universParams.with_original_language : (filters.language || undefined),
           'with_runtime.lte': filters.runtime || undefined,
@@ -2353,8 +2701,23 @@ async function runSearch(_page = 1, { append = false } = {}) {
           [dateKey + '.lte']: filters.decade ? (Number(filters.decade) + 9) + '-12-31' : undefined
         } }];
       });
+      /* Une personne REMPLACE les sources : sa filmographie n'est pas un
+         sous-ensemble du catalogue, c'est une liste qu'on a déjà toute entière.
+         Le reste des filtres continue de s'appliquer par-dessus, dans `accept`
+         — sinon choisir un réalisateur effacerait silencieusement le genre,
+         la décennie et l'univers qu'on venait de régler. */
+      if (state.gens.length) {
+        sources = state.gens.flatMap(p => [
+          { kind: 'movie', path: '/person/' + p.id + '/movie_credits', params: { __role: state.rolePersonne } },
+          { kind: 'tv', path: '/person/' + p.id + '/tv_credits', params: { __role: state.rolePersonne } }
+        ]);
+      }
       if (state.saga) sources = [{ kind: 'movie', path: '/collection/' + state.saga.id, params: {} }];
       discoveryFiltered = Boolean(text && (genres.length || topic || Object.values(filters).some(Boolean)));
+      /* Ce qu'on vérifie nous-mêmes. Sur `discover`, TMDB a déjà fait le
+         travail ; sur une filmographie il ne l'a pas fait du tout, et sur la
+         recherche par texte il ne SAIT pas le faire. */
+      const surPlace = state.gens.length > 0 || Boolean(text);
       const accept = async film => {
         /* L'univers se vérifie TOUJOURS, même dans le catalogue ordinaire :
            c'est ce qui rend « sans anime » exact plutôt qu'approché. Le
@@ -2362,7 +2725,11 @@ async function runSearch(_page = 1, { append = false } = {}) {
            tranche, et ce test ne coûte aucune requête. */
         if (state.univers === 'sans-anime' && estAnime(film)) return false;
         if (animeSeul && !estAnime(film)) return false;
-        if (!text) return true;
+        if (!surPlace) return true;
+        /* Dans une filmographie, la recherche par texte cherche DEDANS : taper
+           « dark » chez Nolan donne ses films qui contiennent « dark », pas un
+           nouveau départ dans tout le catalogue. */
+        if (state.gens.length && text && !fold(film.title || '').includes(fold(text))) return false;
         if (genres.length && !genres.every(id => film.genre_ids.includes(id))) return false;
         if (filters.language && !animeSeul && film.original_language !== filters.language) return false;
         if (filters.votes && film.vote_count < filters.votes) return false;
@@ -2607,7 +2974,7 @@ function slideBody(slide) {
     text.textContent = slide.text;
     wrap.append(text);
   }
-  for (const [label, value] of slide.rows || []) {
+  for (const [label, value, action] of slide.rows || []) {
     const row = document.createElement('div');
     row.className = 'text__row';
     const name = document.createElement('span');
@@ -2615,7 +2982,21 @@ function slideBody(slide) {
     name.textContent = label;
     const content = document.createElement('span');
     content.className = 'text__value';
-    content.textContent = value;
+    /* Une valeur cliquable : c'est par là qu'on rebondit. Voir « Réalisation :
+       Christopher Nolan » et ne pas pouvoir demander ses autres films, c'est
+       une information qu'on donne et qu'on reprend aussitôt. */
+    if (action) {
+      const lien = document.createElement('button');
+      lien.type = 'button';
+      lien.className = 'text__lien';
+      lien.textContent = value;
+      lien.setAttribute('aria-label', action.titre);
+      lien.title = action.titre;
+      lien.addEventListener('click', action.faire);
+      content.append(lien);
+    } else {
+      content.textContent = value;
+    }
     row.append(name, content);
     if (!label) row.classList.add('text__row--seul');
     wrap.append(row);
@@ -3278,9 +3659,24 @@ function money(value) {
  *  plateformes. La fiche et le survol montrent exactement les mêmes. */
 function detailRows(film) {
   const rows = [];
-  if (film.director) rows.push([film.kind === 'tv' ? 'Création' : 'Réalisation', film.director]);
+  if (film.director) {
+    /* Cliquable seulement si on connaît l'identifiant : un nom sans
+       identifiant obligerait à une recherche par texte, qui trouverait
+       n'importe qui. Sans identifiant, on affiche le nom sans promettre. */
+    const action = film.directorId ? {
+      titre: 'Voir les films de ' + film.director,
+      faire: () => ouvrirFilmographie(film.director, film.directorId, 'realisation')
+    } : null;
+    rows.push([film.kind === 'tv' ? 'Création' : 'Réalisation', film.director, action]);
+  }
   if (film.cast?.length) rows.push(['Avec', film.cast.join(', ')]);
-  if (film.companies?.length) rows.push(['Production', film.companies.slice(0, 2).join(', ')]);
+  if (film.companies?.length) {
+    const action = film.companyIds?.length ? {
+      titre: 'Voir les productions de ' + film.companies[0],
+      faire: () => ouvrirSociete(film.companies[0], film.companyIds[0])
+    } : null;
+    rows.push(['Production', film.companies.slice(0, 2).join(', '), action]);
+  }
   if (film.countries?.length) rows.push(['Pays', film.countries.join(', ')]);
   if (film.vote_count) {
     rows.push(['Note', film.vote_average.toFixed(1) + ' / 10 sur ' +
@@ -3971,6 +4367,60 @@ function initLeMiroir() {
 }
 
 /**
+ * Le graphe.
+ *
+ * C'est la seule vue qui a besoin de SAVOIR qui a fait quoi : un mur d'affiches
+ * se contente d'un titre et d'une image, un graphe de liens ne dit rien sans le
+ * réalisateur, la saga et le casting. On paie donc une fois le prix des fiches —
+ * et seulement pour ce qu'on regarde.
+ */
+function initLeGraphe() {
+  initGraphe({
+    racine: el('graph'),
+    toile: el('graph-toile'),
+    films: () => state.wall,
+    lien: () => state.lienGraphe,
+    choisirLien: id => { state.lienGraphe = id; },
+    completer: (films, avance) => preparerGraphe(films, avance),
+    ouvrirFiche: film => openCard(film),
+    annoncer: message => announce(message)
+  });
+}
+
+/**
+ * Enrichir les films du mur, juste assez pour que le graphe ait de quoi relier.
+ *
+ * `fetchDetail` est la même porte que partout ailleurs : elle rapporte le
+ * réalisateur, la saga et le casting, et elle retient ce qu'elle a appris. Un
+ * film ouvert depuis le graphe s'ouvrira donc sans attendre.
+ */
+async function preparerGraphe(films, avance) {
+  if (!state.live) return;
+  const aFaire = films.filter(f => !f.__detail).slice(0, PLAFOND_GRAPHE);
+  if (!aFaire.length) return;
+  let fait = 0;
+  await mapLimit(aFaire, 4, async film => {
+    try { await fetchDetail(film); } catch { /* un film muet ne bloque pas le graphe */ }
+    fait++;
+    avance?.(fait + ' / ' + aFaire.length);
+  });
+  saveStore();
+}
+
+/**
+ * Le mur et le graphe ne se montrent jamais ensemble.
+ *
+ * `#wall` est masqué par `hidden`, jamais par une classe : c'est le même
+ * mécanisme que partout ailleurs, et il vaut aussi pour les lecteurs d'écran —
+ * un mur caché mais annoncé serait pire que pas de mur du tout.
+ */
+function majAffichageGraphe() {
+  const veut = appEl.dataset.density === 'graph' && state.mode === 'film';
+  el('wall').hidden = veut;
+  if (veut) montrerGraphe(); else cacherGraphe();
+}
+
+/**
  * Un film à partir de sa clé, même s'il n'est plus en mémoire.
  *
  * Le miroir travaille sur les instantanés — tout ce qu'on a marqué, y compris
@@ -4224,10 +4674,17 @@ async function start() {
   const voulu = new URLSearchParams(location.search).get('mode');
   state.mode = MODES.some(m => m.id === voulu) ? voulu : 'film';
   appEl.className = 'mode-' + state.mode;
+  /* La densité a une valeur dès le premier instant : sans elle, `dataset` est
+     vide, le CSS devine, et le graphe ne sait pas s'il doit s'ouvrir. */
+  appEl.dataset.density = el('catalogue-density').value;
 
   renderModes();
   renderListe();
   renderRangees();
+  renderRoles();
+  renderTypesSociete();
+  renderAvance();
+  initLeGraphe();
   renderDrawers();
   renderPalette();
   renderQueryChips();
